@@ -192,7 +192,9 @@ def metanet_param_fit(
     num_calibrated_segments,
     include_ramping=True,
     varylanes=True,
-    lane_mapping=None
+    lane_mapping=None,
+    constraint_tol=1e-12,
+    enforce_ramps=False
 ):
     initial_flow_or = initial_traffic_state
     
@@ -205,16 +207,18 @@ def metanet_param_fit(
      # Ensure no divide-by-zero
 
     num_timesteps, num_segments = v_hat.shape
-    print(num_timesteps, num_segments)
-    print(initial_flow_or.shape)
-    print(downstream_density.shape)
+    # print(num_timesteps, num_segments)
+    # print(initial_flow_or.shape)
+    # print(downstream_density.shape)
 
     model = ConcreteModel()
     model.t = RangeSet(0, num_timesteps - 1)
+    model.t_loss = RangeSet(0, num_timesteps - 1, 10)
     model.i = RangeSet(0, num_segments - 1)
     # model.i = RangeSet(0, num_calibrated_segments - 1)
     model.num_segments = num_segments
     model.num_calibrated_segments = num_calibrated_segments
+    model.constraints = ConstraintList()
 
     # Fixed params
     model.T = Param(initialize=T)
@@ -230,21 +234,26 @@ def metanet_param_fit(
         model.n_lanes = Param(model.i, initialize=4)
 
     # Parameters to estimate
-    model.eta_high = Var(model.i, bounds=(1.0, 90.0), initialize=30.0)
+    model.eta_high = Var(model.i, bounds=(10.0, 90.0), initialize=30.0)
     model.tau = Var(
         model.i, bounds=(1.0 / 3600, 60.0 / 3600), initialize=18 / 3600
     )
-    model.K = Var(model.i, bounds=(1.0, 50.0), initialize=40.0)
+    model.K = Var(model.i, bounds=(5.0, 60.0), initialize=40.0)
     model.rho_crit = Var(
-        model.i, bounds=(1e-2, np.max(rho_hat)), initialize=37.45
+        model.i, bounds=(15, np.max(rho_hat)), initialize=37.45
     )
-    model.v_free = Var(model.i, bounds=(50, 150), initialize=120.0)
-    model.a = Var(model.i, bounds=(0.01, 10), initialize=1.4)
+    model.v_free = Var(model.i, bounds=(70, 150), initialize=120.0)
+    model.a = Var(model.i, bounds=(0.5, 5), initialize=1.4)
 
     if include_ramping:
         # model.gamma = Var(model.i, bounds=(0.5, 1.5), initialize=1)
         model.beta = Var(model.i, bounds=(1e-3, 0.9), initialize=1e-3)
         model.r_inflow = Var(model.i, bounds=(1e-3, 2000), initialize=1e-3)
+        if enforce_ramps:
+            for r_ind in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13]:
+                model.constraints.add(model.r_inflow[r_ind] == 0.0)
+            for b_ind in [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13]:
+                model.constraints.add(model.beta[b_ind] == 0.0)
 
         # model.beta = Var(model.i, bounds=(0.0, 0.0), initialize=0.0)
         # model.r_inflow = Var(model.i, bounds=(-2000, 2000), initialize=200)
@@ -275,7 +284,6 @@ def metanet_param_fit(
     )
 
     # Initial conditions
-    model.constraints = ConstraintList()
     for i in range(num_segments):
         model.constraints.add(model.v_pred[0, i] == v_hat[0, i].item())
         model.constraints.add(model.rho_pred[0, i] == rho_hat[0, i].item())
@@ -451,11 +459,11 @@ def metanet_param_fit(
     # solver.options["dual_inf_tol"] = 1e-10       # dual infeasibility tolerance
     # solver.options["compl_inf_tol"] = 1e-10       
     solver.options["max_iter"] = 20000
-    solver.options['acceptable_constr_viol_tol'] = 1e-12
-    solver.options['constr_viol_tol'] = 1e-12
+    solver.options['acceptable_constr_viol_tol'] = constraint_tol
+    solver.options['constr_viol_tol'] = constraint_tol
     # solver.options["dual_inf_tol"] = 1e-11
     # solver.options["acceptable_dual_inf_tol"] = 1e-11
-    solver.solve(model, tee=True)
+    solver.solve(model, tee=False)
 
     return model
 
@@ -470,7 +478,9 @@ def run_calibration(
     include_ramping=True,
     varylanes=True,
     lane_mapping=None,
-    smoothing=True
+    smoothing=True,
+    constraint_tol=1e-12,
+    enforce_ramps=False
 ):
     """
     Run METANET parameter calibration with configurable segment grouping.
@@ -538,113 +548,95 @@ def run_calibration(
     # Loop through groups of segments
     start_segment = 1 if sep_boundary_conditions is None else 0
 
-    for start_idx in range(start_segment, total_segments + 1, num_calibrated_segments):
-        end_idx = min(start_idx + num_calibrated_segments, total_segments + 1)
-        print(start_idx, end_idx)
-        # Slice for this group
-        segment_rho_hat = rho_hat[:, start_idx:end_idx]
-        segment_v_hat = v_hat[:, start_idx:end_idx]
-        segment_q_hat = q_hat[:, start_idx:end_idx]
+    assert (total_segments == num_calibrated_segments)
 
-        # Boundary conditions depend on group position
-        if sep_boundary_conditions is not None:
-            initial_flow = sep_boundary_conditions["initial_flow"]
-            downstream_density = sep_boundary_conditions["downstream_density"]
-        else:
-            initial_flow = q_hat[:, start_idx - 1 : start_idx]  # upstream inflow
-            downstream_density = rho_hat[:, end_idx : end_idx + 1]
+    # Boundary conditions depend on group position
+    if sep_boundary_conditions is not None:
+        initial_flow = sep_boundary_conditions["initial_flow"]
+        downstream_density = sep_boundary_conditions["downstream_density"]
+    else:
+        initial_flow = q_hat[:, 0]  # upstream inflow
+        downstream_density = rho_hat[:, -1]
 
-        if smoothing:
-            initial_flow = smooth_inflow(initial_flow)  # upstream inflow
-            downstream_density = smooth_inflow(downstream_density)  # downstream density
+    if smoothing:
+        initial_flow = smooth_inflow(initial_flow)  # upstream inflow
+        downstream_density = smooth_inflow(downstream_density)  # downstream density
 
-        # Run calibration for this block
-        res_model = metanet_param_fit(
-            segment_v_hat,
-            segment_rho_hat,
-            segment_q_hat,
-            T,
-            l,
-            initial_flow,
-            downstream_density,
-            num_calibrated_segments,
-            include_ramping=include_ramping,
-            varylanes=varylanes,
-            lane_mapping=lane_mapping,
+    # print("--------Calib boundary conditions--------")
+    # print("Initial flow:", initial_flow[0:10])
+    # print("Downstream density:", downstream_density[0:10])
+    # print("Initial velocity:", segment_v_hat[0, :])
+    # print("Initial density:", segment_rho_hat[0, :])
+    # print("Initial flow:", segment_q_hat[0, :])
+    # Run calibration for this block
+
+    # print(initial_flow[0:10])
+    # print(downstream_density[0:10]/4)
+    # print(v_hat[0,:])
+    # print(rho_hat[0,:])
+
+    res_model = metanet_param_fit(
+        v_hat,
+        rho_hat,
+        q_hat,
+        T,
+        l,
+        initial_flow,
+        downstream_density,
+        num_calibrated_segments,
+        include_ramping=include_ramping,
+        varylanes=varylanes,
+        lane_mapping=lane_mapping,
+        constraint_tol=constraint_tol,
+        enforce_ramps=enforce_ramps
+    )
+
+    num_timesteps, num_segments = v_hat.shape
+
+    v_pred_array = np.zeros((num_timesteps, num_segments))
+    rho_pred_array = np.zeros((num_timesteps, num_segments))
+
+    for t in range(num_timesteps):
+        for i in range(num_segments):
+            v_pred_array[t, i] = value(res_model.v_pred[t, i])
+            rho_pred_array[t, i] = value(res_model.rho_pred[t, i])
+    
+    # Append predictions
+    if len(results["v_pred"]) == 0:
+        results["v_pred"] = v_pred_array
+        results["rho_pred"] = rho_pred_array
+    else:
+        results["v_pred"] = np.concatenate(
+            [results["v_pred"], v_pred_array], axis=1
+        )
+        results["rho_pred"] = np.concatenate(
+            [results["rho_pred"], rho_pred_array], axis=1
         )
 
-        num_timesteps, num_segments = segment_v_hat.shape
-
-        v_pred_array = np.zeros((num_timesteps, num_segments))
-        rho_pred_array = np.zeros((num_timesteps, num_segments))
-
-        for t in range(num_timesteps):
-            for i in range(num_segments):
-                v_pred_array[t, i] = value(res_model.v_pred[t, i])
-                rho_pred_array[t, i] = value(res_model.rho_pred[t, i])
-        # 7th segment check
-
-        current = v_pred_array[0, 7]
-        prev_state = v_pred_array[0, 6]
-        density = rho_pred_array[0, 7] / value(res_model.n_lanes[7])
-        next_density = rho_pred_array[0, 8] / value(res_model.n_lanes[8])
-        seg = 7
-        VSL = 150
-        T = 10 / 3600
-        l = 0.4
-        print(
-            "checking 7th segment",
-            value(
-                velocity_dynamics(
-                    res_model,
-                    current,
-                    prev_state,
-                    density,
-                    next_density,
-                    VSL,
-                    T,
-                    l,
-                    seg,
-                )
-            ),
-        )
-        print("v pred", value(res_model.v_pred[1, 7]))
-        # Append predictions
-        if len(results["v_pred"]) == 0:
-            results["v_pred"] = v_pred_array
-            results["rho_pred"] = rho_pred_array
-        else:
-            results["v_pred"] = np.concatenate(
-                [results["v_pred"], v_pred_array], axis=1
-            )
-            results["rho_pred"] = np.concatenate(
-                [results["rho_pred"], rho_pred_array], axis=1
-            )
-
-        # Append parameter arrays
-        results["tau"].extend([value(res_model.tau[i]) for i in range(num_segments)])
-        results["K"].extend([value(res_model.K[i]) for i in range(num_segments)])
-        results["eta_high"].extend(
-            [value(res_model.eta_high[i]) for i in range(num_segments)]
-        )
-        results["rho_crit"].extend(
-            [value(res_model.rho_crit[i]) for i in range(num_segments)]
-        )
-        results["v_free"].extend(
-            [value(res_model.v_free[i]) for i in range(num_segments)]
-        )
-        results["a"].extend([value(res_model.a[i]) for i in range(num_segments)])
-        results["num_lanes"].extend(
-            [value(res_model.n_lanes[i]) for i in range(num_segments)]
-        )
-        # if include_ramping:
-            # results["gamma"].extend([value(res_model.gamma[i]) for i in range(num_segments)])
-        results["beta"].extend(
-            [value(res_model.beta[i]) for i in range(num_segments)]
-        )
-        results["r_inflow"].extend(
-            [value(res_model.r_inflow[i]) for i in range(num_segments)]
-        )
+    # Append parameter arrays
+    results["tau"].extend([value(res_model.tau[i]) for i in range(num_segments)])
+    results["K"].extend([value(res_model.K[i]) for i in range(num_segments)])
+    results["eta_high"].extend(
+        [value(res_model.eta_high[i]) for i in range(num_segments)]
+    )
+    results["rho_crit"].extend(
+        [value(res_model.rho_crit[i]) for i in range(num_segments)]
+    )
+    results["v_free"].extend(
+        [value(res_model.v_free[i]) for i in range(num_segments)]
+    )
+    results["a"].extend([value(res_model.a[i]) for i in range(num_segments)])
+    results["num_lanes"].extend(
+        [value(res_model.n_lanes[i]) for i in range(num_segments)]
+    )
+    # if include_ramping:
+        # results["gamma"].extend([value(res_model.gamma[i]) for i in range(num_segments)])
+    results["beta"].extend(
+        [value(res_model.beta[i]) for i in range(num_segments)]
+    )
+    results["r_inflow"].extend(
+        [value(res_model.r_inflow[i]) for i in range(num_segments)]
+    )
 
     # Convert parameter lists to numpy arrays
     for key in ["tau", "K", "eta_high", "rho_crit", "v_free", "a", "num_lanes"]:

@@ -330,7 +330,7 @@ def plot_matrices(
     Returns:
     None
     """
-    plt.figure(figsize=(12, 12))
+    plt.figure(figsize=(12, 8))
 
     # Compute reasonable tick marks
     num_time_bins = flow_matrix.shape[0]
@@ -340,9 +340,20 @@ def plot_matrices(
     space_ticks = np.linspace(0, num_space_bins - 1, min(10, num_space_bins)).astype(
         int
     )
-
-    time_labels = [(t_min + i * time_increment).strftime("%H:%M") for i in time_ticks]
+    try:
+        time_labels = [(t_min + i * time_increment).strftime("%H:%M") for i in time_ticks]
+    except:
+        time_labels = [(t_min + i * time_increment) for i in time_ticks]
     space_labels = [int(x_min + i * space_increment) for i in space_ticks]
+
+    # Change tick marks to be hours
+    time_labels = [f"{int(label/3600)}:00" for label in time_labels]
+    
+    #Change space tick marks to be in km
+    space_labels = [f"{int(label)/1000:.1f}" for label in space_labels]
+
+    #flip y axis ticks
+    space_ticks = space_ticks[::-1]
 
     # Create heatmap for flow matrix
     ax1 = plt.subplot(2, 2, 1)
@@ -375,7 +386,7 @@ def plot_matrices(
         f"Time-Space Diagram of Vehicle Density\n{time_increment} time increments, {space_increment} meters"
     )
     plt.xlabel("Time")
-    plt.ylabel("Space (meters)")
+    plt.ylabel("Space (km)")
     plt.xticks(time_ticks, time_labels, rotation=45)
     plt.yticks(space_ticks, space_labels)
     # ax2.invert_yaxis()  # Reverse the y-axis
@@ -387,6 +398,7 @@ def plot_matrices(
         xticklabels=time_labels,
         yticklabels=space_labels[::-1],
         cbar_kws={"label": "Speed (km/h)"},
+        vmin=0
     )
     plt.title(
         f"Time-Space Diagram of Vehicle Speed\n{time_increment} time increments, {space_increment} meters"

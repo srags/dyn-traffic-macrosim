@@ -214,7 +214,7 @@ def run_metanet_sim(T: float,
     """
     time_steps = downstream_density.shape[0]
     num_segments = init_traffic_state[0].shape[0]
-    print(time_steps, num_segments)
+    # print(f"Running sim for time steps {time_steps}, segments {num_segments}")
 
     if vsl_speeds is None:
         vsl_speeds = np.full((time_steps, num_segments), 1000)  # effectively no speed limit

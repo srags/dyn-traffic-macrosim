@@ -7,7 +7,7 @@ from typing import Dict, Tuple, Optional
 # ----------------------------
 
 def density_dynamics(current: float, inflow: float, outflow: float, lanes: int, T: float, l: float,
-                     gamma: float = 1.0, beta: float = 0.0, r: float = 0.0) -> float:
+                    beta: float = 0.0, r: float = 0.0) -> float:
     """Update density with conservation equation (per segment).
     """
     return current + T / (l * lanes) * (inflow - outflow / (1 - beta) + r)
@@ -28,6 +28,8 @@ def calculate_V(rho: float, v_ctrl: float, a: float, p_crit: float, v_free: floa
     # p_crit += 1e-4
     # a += 1e-4
     # assert - (rho / p_crit) ** a / a < 700, f"Overflow in desired speed calculation, pow too large: { - (rho / p_crit) ** a / a}, rho={rho}, p_crit={p_crit}, a={a}"
+    # if rho <= 0:
+    #     print("Warning: non-positive density in calculate_V:", rho)
     return v_free * np.exp(- (rho / p_crit) ** a / a)
 
 
@@ -129,18 +131,18 @@ def metanet_step(t: int,
     for i in range(num_segments):
         beta = _get_time_space_param(params["beta"], t if np.ndim(params["beta"]) == 2 else 0, i)
         r = _get_time_space_param(params["r"], t if np.ndim(params["r"]) == 2 else 0, i)
-        gamma = _get_time_space_param(params["gamma"], 0, i)
+        # gamma = _get_time_space_param(params["gamma"], 0, i)
 
         if i == 0:
             inflow = demand[t] if real_data else flow_origin_t
             outflow = density_t[i] * velocity_t[i] * lanes[i]
             density_tp1[i] = density_dynamics(density_t[i], inflow, outflow, lanes[i], T, l,
-                                              gamma=gamma, beta=beta, r=r)
+                                            beta=beta, r=r)
         else:
             inflow = density_t[i - 1] * velocity_t[i - 1] * lanes[i - 1]
             outflow = density_t[i] * velocity_t[i] * lanes[i]
             density_tp1[i] = density_dynamics(density_t[i], inflow, outflow, lanes[i], T, l,
-                                              gamma=gamma, beta=beta, r=r)
+                                              beta=beta, r=r)
 
     # --- velocity update ---
     velocity_tp1 = np.empty_like(velocity_t, dtype=float)

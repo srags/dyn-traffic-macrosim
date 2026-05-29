@@ -1,12 +1,8 @@
 # Ignore everything in these directories...
-data/*
 i24-data/*
-calibration_results/*
 
 # ...but keep the placeholder file
-!data/.gitkeep
 !i24-data/.gitkeep
-!calibration_results/.gitkeep
 
 # Other ignores
 .ipynb_checkpoints/

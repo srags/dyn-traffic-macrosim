@@ -205,7 +205,7 @@ def _load_average_over_all_segments(cache_dir, cfg, perturb_pct):
     return avg_results, loaded_pct_ref, metadata
 
 #############
-def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", percentile=False, g_fontsize=24, save_path=None):
+def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", percentile=False, g_fontsize=24, save_path=None, figname=None, highlight_hor=None):
     """
     Plot percentile curves from multiple root directories only if they contain noise_robustness_results.csv files. 
     Run evaluate robustness function to generate these files for different methods and horizons. 
@@ -221,6 +221,7 @@ def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", perce
         15: "#BB4EFF",  # highlight this one
         20: "#E45DFF",
         30: "#FF5DBE",
+        60: "#FF5D5D",
     }
     
     mpl.rcParams.update({
@@ -310,7 +311,7 @@ def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", perce
 
         if 'ocp' in rd_lower:
             method = 'OCP'
-        elif 'mpc' in rd_lower and 'robust' not in rd_lower:
+        elif ('mpc' in rd_lower or "dynamic" in rd_lower) and 'robust' not in rd_lower:
             method = 'MPC'
         elif 'robust' in rd_lower or 'robust' in label.lower():
             method = 'Robust'
@@ -361,15 +362,16 @@ def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", perce
         return [mcolors.to_hex((1 - t) * dark_purple + t * teal) for t in np.linspace(0, 1, n)]
 
 
-    mpc_colors = purple_to_teal(len(mpc_entries))
-    mpc_color_dict = {e['horizon']: color for color, e in zip(mpc_colors, mpc_entries)}
+    # mpc_colors = purple_to_teal(len(mpc_entries))
+    #mpc_color_dict = {e['horizon']: color for color, e in zip(mpc_colors, mpc_entries)}
     # evenly space the MPC colors from purple to blue
     #mpc_cmap = mpl.cm.get_cmap("cool", num_mpc + 2)  # +2 to avoid very light colors at the start
     # 
-    #     # mpc_color_map = {}
-    # for e in mpc_entries:
-    #     mpc_color_map[e['label']] = blue_purple_colors[e['horizon'] // 6]
+    mpc_color_dict = {}
+    for e in mpc_entries:
+        mpc_color_dict[e['horizon']] = blue_purple_colors[e['horizon']//6]
 
+    print(mpc_color_dict)
         
 
     for e in entries:
@@ -383,10 +385,10 @@ def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", perce
             color = mpc_color_dict.get(e['horizon'], None)
             linewidth = 3 if e['horizon'] == 90 else 3
             linestyle = '-' if e['horizon'] == 90 else '-'
-            marker = None if e['horizon'] == 90 else None
-            marker_size = 10 if e['horizon'] == 90 else None
+            marker = 'd' if e['horizon'] in highlight_hor else None
+            marker_size = 10 if e['horizon'] in highlight_hor else None
             if e['horizon'] is not None:
-                legend_label = f"Dynamic: {e['horizon'] * 10 / 60:.1f} min" #f"Dynamic: {e['horizon'] * 10 // 60} min"
+                legend_label = f"Dynamic: {e['horizon'] * 10 // 60} min"
             else:
                 legend_label = "Dynamic"
         elif method == 'OCP':
@@ -437,10 +439,10 @@ def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", perce
                 linewidth=0
             )
 
-    ax.set_xlim([1e-10, 5])
+    ax.set_xlim([min(e['noise_levels']), 5])
     ax.set_ylim(bottom=0)
     ax.set_xscale('log')
-    ax.set_xlabel('Noise added to inflows (%)', fontsize=g_fontsize)
+    ax.set_xlabel('Std Dev of Noise Added to Inflows (%)', fontsize=g_fontsize)
     ax.set_ylabel(ylabel, fontsize=g_fontsize)
     ax.tick_params(axis='both', which='major', labelsize=g_fontsize - 2)
     handles, labels = ax.get_legend_handles_labels()
@@ -456,8 +458,9 @@ def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", perce
     )
     #ax.grid(False, which='both', ls='--', linewidth=0.5)
     plt.tight_layout()
-    if save_path is not None:
-        plt.savefig(save_path, bbox_inches='tight', pad_inches=0)
+    if save_path is not None and figname is not None:
+        os.makedirs(save_path, exist_ok=True)
+        plt.savefig(save_path + "/" + figname, bbox_inches='tight', pad_inches=0)
     plt.show()
 
 def plot_sim_vs_gt(v_gt, v_sim, T, l, noise, save_dir):
@@ -876,6 +879,8 @@ def plot_fd_diagrams(params_list, scenario_info, labels, save_path=None):
 
     plt.tight_layout()
     if save_path is not None:
+        # Make save path dir
+        os.makedirs(save_path, exist_ok=True)
         plt.savefig(save_path, bbox_inches='tight')
 
     plt.show()

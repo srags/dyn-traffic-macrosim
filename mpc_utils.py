@@ -201,7 +201,9 @@ def calibrate_params_mpc(
     ramp_mapping: Optional[Dict[int, float]] = None,
     separate_boundary_conditions: Optional[Dict[int, float]] = None,
     use_A_regularizer: bool = False,
-    lambda_reg: float = 1.0
+    lambda_reg: float = 1.0,
+    tee=True,
+    min_oscillations=False
 ) -> None:
     if pred_h is None:
         pred_h = control_h
@@ -260,7 +262,7 @@ def calibrate_params_mpc(
         # If you want each window to start from measured initial state at its start (common):
         trunc_rho[0, :] = np.copy(init_rho)
         trunc_q[0, :] = np.copy(init_q)
-
+        
         calib_res = opt.run_calibration(
             trunc_rho,
             trunc_q,
@@ -280,6 +282,8 @@ def calibrate_params_mpc(
             ramp_mapping=ramp_mapping,
             use_A_regularizer=use_A_regularizer,
             lambda_reg=lambda_reg,
+            tee=tee,
+            min_oscillations=min_oscillations
         )
 
         RESULTS_DIR = f"{mpc_results_dir(results_root_dir, control_h)}/params_{ind_start // control_h + 1}"
@@ -322,7 +326,7 @@ def calibrate_params_mpc(
 
         ind_start += control_h
 
-        print(v_sim.shape)
+        # print(v_sim.shape)
         init_rho = np.copy(rho_sim[control_h, :]) * np.array(num_lanes_array)
         init_q = init_rho * np.copy(v_sim[control_h, :])
         init_v = np.copy(v_sim[control_h, :])
@@ -351,8 +355,8 @@ def calibrate_params_mpc(
 
         if verbose:
             print(f"Results saved to {RESULTS_DIR}/")
-            print(f"New velocities: {v_sim[control_h, :]}")
-            print(f"New densities: {rho_sim[control_h, :]}")
+            # print(f"New velocities: {v_sim[control_h, :]}")
+            # print(f"New densities: {rho_sim[control_h, :]}")
 
     print(f"Calibration over {K} time steps with control horizon {control_h} completed.")
 

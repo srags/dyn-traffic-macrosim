@@ -248,7 +248,9 @@ def metanet_param_fit(
     use_A_regularizer=False,
     lambda_reg=1.0,
     x0=None,
-    tee=True
+    tee=True,
+    min_oscillations=False,
+    oscillation_weight=5
 ):
     initial_flow_or = initial_traffic_state
     
@@ -319,7 +321,7 @@ def metanet_param_fit(
         )
         model.K = Var(model.i, bounds=(5.0, 60.0), initialize=40.0)
         model.rho_crit = Var(
-            model.i, bounds=(15, 75), initialize=37.45
+            model.i, bounds=(15, np.max(rho_hat)), initialize=37.45
         )
         model.v_free = Var(model.i, bounds=(70, 150), initialize=120.0)
         model.a = Var(model.i, bounds=(0.5, 5), initialize=1.4)
@@ -352,7 +354,7 @@ def metanet_param_fit(
 
     if include_ramping:    
         if time_varying_ramps:
-            model.beta = Var(model.i, bounds=(1e-3, 0.6), initialize=1e-3)
+            model.beta = Var(model.i, bounds=(1e-3, 0.8), initialize=1e-3)
             model.r_inflow = Var(model.t, model.i, bounds=(1e-3, 2000), initialize=1e-3)
             
             if ramp_mapping is not None:
@@ -417,7 +419,7 @@ def metanet_param_fit(
     model.rho_pred = Var(
         model.t,
         model.i,
-        bounds=(1e-3, 400),
+        bounds=(1e-3, np.max(rho_hat)+50),
         initialize={(t, i): float(rho_hat[t, i]) for t in model.t for i in model.i},
     )
     # model.q_pred = Var(
@@ -448,6 +450,18 @@ def metanet_param_fit(
     #     model.i,
     #     initialize={(t, i): float(q_hat[t, i]) for t in model.t for i in model.i},
     # )
+    if min_oscillations:
+        num_t = num_timesteps
+        model.t_mid = RangeSet(1, num_t - 2)
+
+        # auxiliary variable = normalized second difference
+        model.d2v = Var(model.t_mid, model.i, initialize=0.0)
+
+        def d2v_def(m, t, i):
+            return m.d2v[t, i] * v_hat.max() == (
+                m.v_pred[t + 1, i] - 2.0 * m.v_pred[t, i] + m.v_pred[t - 1, i]
+            )
+        model.d2v_con = Constraint(model.t_mid, model.i, rule=d2v_def)
 
     # Dynamics functions
     def density_dynamics(current, inflow, outflow, T, l, lanes, beta, r_inflow):
@@ -457,7 +471,7 @@ def metanet_param_fit(
 
     def calculate_V(m, rho, VSL, seg):
         return m.v_free[seg] * pyo.exp(
-            -1 / m.a[seg] * (rho / m.rho_crit[seg]) ** m.a[seg]
+            -1 / m.a[seg] * (rho / m.rho_crit[seg]) ** (m.a[seg])
         )
 
     def velocity_dynamics(
@@ -618,6 +632,13 @@ def metanet_param_fit(
             for t in m.t
             for i in m.i
         )
+
+        # Penalize chatter: second difference of velocity in time      # <
+        if min_oscillations:
+            loss_fn += oscillation_weight * pyo.quicksum(
+                m.d2v[t, i] ** 2 for t in m.t_mid for i in m.i
+            )                                                    # <
+
         # Add smoothness constraint to params from prev_param_path
         if prev_param_path is not None:
             prev_params = METANET_Params(path=prev_param_path, num_segments=num_calibrated_segments).get_params()
@@ -780,17 +801,17 @@ def metanet_param_fit_robust(
         )
         m.K = Var(m.i, bounds=(5.0, 60.0), initialize=40.0)
         m.rho_crit = Var(
-            m.i, bounds=(15, 100), initialize=37.45
+            m.i, bounds=(15, 90), initialize=37.45
         )
         m.v_free = Var(m.i, bounds=(70, 150), initialize=120.0)
         m.a = Var(m.i, bounds=(0.5, 5), initialize=1.4)
 
-    # m.eta_high = Var(m.i, bounds=(10.0, 90.0), initialize=30.0)
-    # m.tau = Var(m.i, bounds=(1.0 / 3600, 60.0 / 3600), initialize=18 / 3600)
-    # m.K = Var(m.i, bounds=(5.0, 60.0), initialize=40.0)
-    # m.rho_crit = Var(m.i, bounds=(15, float(np.max(rho_hat))), initialize=37.45)
-    # m.v_free = Var(m.i, bounds=(70, 150), initialize=120.0)
-    # m.a = Var(m.i, bounds=(0.5, 5), initialize=1.4)
+        # m.eta_high = Var(m.i, bounds=(10.0, 90.0), initialize=30.0)
+        # m.tau = Var(m.i, bounds=(1.0 / 3600, 60.0 / 3600), initialize=18 / 3600)
+        # m.K = Var(m.i, bounds=(5.0, 60.0), initialize=40.0)
+        # m.rho_crit = Var(m.i, bounds=(15, float(np.max(rho_hat))), initialize=37.45)
+        # m.v_free = Var(m.i, bounds=(70, 150), initialize=120.0)
+        # m.a = Var(m.i, bounds=(0.5, 5), initialize=1.4)
 
     if include_ramping:
         assert("on_ramps" in ramp_mapping and "off_ramps" in ramp_mapping), "If include_ramping is True, ramp_mapping must contain 'on_ramps' and 'off_ramps' keys."
@@ -1048,7 +1069,8 @@ def run_calibration(
     use_A_regularizer=False,
     lambda_reg=1,
     x0=None,
-    tee=True
+    tee=True,
+    min_oscillations=False,
 ):
     """
     Run METANET parameter calibration with configurable segment grouping.
@@ -1071,6 +1093,13 @@ def run_calibration(
     results : dict
         Dictionary with concatenated predictions and parameter arrays.
     """
+
+    # print(num_calibrated_segments)
+    # print(prev_param_path)
+    # print(rho_hat.shape)
+    # print(q_hat.shape)
+    # print(sep_boundary_conditions['downstream_density'].shape)
+    # print(sep_boundary_conditions['initial_flow'].shape)
 
     def calculate_V(m, rho, VSL, seg):
         return m.v_free[seg] * pyo.exp(
@@ -1171,7 +1200,8 @@ def run_calibration(
             fixed_inflows=fixed_inflows,
             use_A_regularizer=use_A_regularizer,
             lambda_reg=lambda_reg, x0=x0,
-            tee=tee
+            tee=tee,
+            min_oscillations=min_oscillations
         )
     else:
         assert isinstance(robust_opt, RobustOptConfig)

@@ -13,6 +13,10 @@ import matplotlib.colors as mcolors
 from simulation_utils import *
 from param_loader import METANET_Params
 import optimization_utils as opt
+import matplotlib.dates as mdates
+from matplotlib.ticker import FuncFormatter
+from datetime import datetime, timedelta
+from eval_metrics import mape
 
 
 #### Helper functions ####
@@ -804,7 +808,7 @@ def run_and_plot_perturbations(param_configs, T, l, num_calibrated_segments,
 
     return all_results
 
-def plot_fd_diagrams(params_list, scenario_info, labels, save_path=None):
+def plot_fd_diagrams(params_list, scenario_info, labels, save_path=None, show_gt=True, show_legend=True):
     q_sims = dict()
     rho_sims = dict()
 
@@ -850,10 +854,12 @@ def plot_fd_diagrams(params_list, scenario_info, labels, save_path=None):
     colors = ["orange", "forestgreen",  "#BB4EFF", "blue"]#plt.cm.tab10.colors
 
     fig, ax = plt.subplots(len(params_list), 1, figsize=(7, 4.5*len(params_list)), sharex=True)
+    ax = np.atleast_1d(ax)
 
     for i in range(len(params_list)):
         # Top subplot
-        ax[i].scatter(rho_hat, q_hat, color="gray", alpha=0.7, s=1, label="Data (gt)")
+        if show_gt:
+            ax[i].scatter(rho_hat, q_hat, color="gray", alpha=0.7, s=1, label="Data (gt)")
         ax[i].scatter(rho_sims[labels[i]], q_sims[labels[i]], alpha=0.6, s=1, label="Predicted", color=colors[i])
         if i == len(params_list) - 1:
             ax[i].set_xlabel("Density (veh/km)")
@@ -863,19 +869,22 @@ def plot_fd_diagrams(params_list, scenario_info, labels, save_path=None):
         ax[i].set_ylim(0, np.max(all_q_pred) * 1.4)
 
     # Shared legend
-    handles = [
-        Line2D([0], [0], marker='o', linestyle='None', color='gray', markersize=8, alpha=0.7, label='Ground Truth Data'),
-    ]
+    handles = []
+    if show_gt:
+        handles.append(
+            Line2D([0], [0], marker='o', linestyle='None', color='gray', markersize=8, alpha=0.7, label='Ground Truth Data'),
+        )
 
     for i in range(len(labels)):
         handles.append(
             Line2D([0], [0], marker='o', linestyle='None', color=colors[i], markersize=8, alpha=0.6, label=labels[i])
         )
 
-    if len(labels) <= 2:
-        fig.legend(handles=handles, loc='upper center', ncol=len(labels)+1, bbox_to_anchor=(0.555, 1.04))
-    else:
-        fig.legend(handles=handles, loc='upper center', ncol = 2, bbox_to_anchor=(0.555, 1.045))
+    if show_legend:
+        if len(labels) <= 2:
+            fig.legend(handles=handles, loc='upper center', ncol=len(labels)+1, bbox_to_anchor=(0.555, 1.04))
+        else:
+            fig.legend(handles=handles, loc='upper center', ncol = 2, bbox_to_anchor=(0.555, 1.045))
 
     plt.tight_layout()
     if save_path is not None:
@@ -883,4 +892,242 @@ def plot_fd_diagrams(params_list, scenario_info, labels, save_path=None):
         os.makedirs(save_path, exist_ok=True)
         plt.savefig(save_path, bbox_inches='tight')
 
+    plt.show()
+
+def plot_time_space_grid(
+    data,
+    labels,
+    percent_noise_list,
+    v_hat,
+    value_key_base="v_sim",
+    cmap="RdYlGn",
+    figsize_per_col=3.0,
+    figsize_per_row=3.0,
+    g_fontsize=10,
+    vmin=None,
+    vmax=None,
+    show_colorbar=True,
+    clean_title="No noise",
+    noise_title_fmt="{pct:g}% Added Noise",
+    vhat_title=r"$v_{\hat{}}$",
+    segment_length_km=0.4,
+    dt_seconds=10,
+    start_time_str="08:00",
+    colorbar_label="Speed",
+    save_path="noised_inflows.pdf",
+    show_gt=False
+    
+):
+    def _time_fmt(x, pos=None):
+        dt = mdates.num2date(x)
+        return f"{dt.hour}:{dt.minute:02d}"
+
+    # Font scaling
+    tick_fs = g_fontsize
+    label_fs = g_fontsize + 1
+    title_fs = g_fontsize + 1
+    rowlabel_fs = g_fontsize + 2
+
+
+    mpl.rcParams.update({
+        "font.family": "serif",
+        "font.serif": "Times New Roman", #["Computer Modern Roman", "CMU Serif", "DejaVu Serif"],  # Use Computer Modern for text
+        "mathtext.fontset": "cm",   # Computer Modern for math
+        "pdf.fonttype": 42,  # Embed fonts in PDF output
+        "ps.fonttype": 42,  # Embed fonts in PS output
+        "mathtext.fontset": "cm",
+        "axes.unicode_minus": False,
+        "text.usetex": False,
+    })
+
+    nrows = len(labels)
+    ncols = 1 + len(percent_noise_list)
+
+    # Collect arrays and shared color scale
+    arrays_for_scale = []
+    panel_arrays = {}
+
+    for label in labels:
+        clean_arr = np.asarray(data[label][value_key_base])
+        panel_arrays[(label, "clean")] = clean_arr
+        arrays_for_scale.append(clean_arr[:-1, :])
+
+        for pct in percent_noise_list:
+            key = f"{value_key_base}_noise_{pct}"
+            arr = np.asarray(data[label][key])
+            panel_arrays[(label, pct)] = arr
+            arrays_for_scale.append(arr[:-1, :])
+
+    # Use interior segments of v_hat to match simulated dimensions
+    vhat_arr = np.asarray(v_hat[:, 1:-1])
+    arrays_for_scale.append(vhat_arr)
+
+    if vmin is None:
+        vmin = min(np.nanmin(arr) for arr in arrays_for_scale)
+    if vmax is None:
+        vmax = max(np.nanmax(arr) for arr in arrays_for_scale)
+
+    sample_arr = panel_arrays[(labels[0], "clean")]
+    n_time, n_seg = sample_arr[:-1, :].shape
+
+    start_dt = datetime.strptime(start_time_str, "%H:%M")
+    end_dt = start_dt + timedelta(seconds=dt_seconds * n_time)
+
+    y_min = 0.0
+    y_max = n_seg * segment_length_km
+
+    # Figure + gridspec
+
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(figsize_per_col * (ncols + 1.4), figsize_per_row * nrows),
+        squeeze=False,
+        sharex=True,
+        sharey=True,
+        constrained_layout=True,
+    )
+
+    im = None
+
+    for r, label in enumerate(labels):
+        for c in range(ncols):
+            ax = axes[r, c]
+
+            if c == 0:
+                arr = panel_arrays[(label, "clean")]
+            else:
+                pct = percent_noise_list[c - 1]
+                arr = panel_arrays[(label, pct)]
+
+            im = ax.imshow(
+                arr[:-1, :].T,
+                aspect="auto",
+                origin="lower",
+                cmap=cmap,
+                vmin=vmin,
+                vmax=vmax,
+                interpolation="nearest",
+                extent=[
+                    mdates.date2num(start_dt),
+                    mdates.date2num(end_dt),
+                    y_min,
+                    y_max,
+                ],
+            )
+
+            if r == 0:
+                if c == 0:
+                    ax.set_title(clean_title, fontsize=title_fs)
+                else:
+                    pct = percent_noise_list[c - 1]
+                    ax.set_title(noise_title_fmt.format(pct=pct), fontsize=title_fs)
+
+            ax.tick_params(labelsize=tick_fs)
+
+            if r == nrows - 1:
+                ax.set_xlabel("Time", fontsize=label_fs)
+                ax.xaxis.set_major_locator(mdates.MinuteLocator(interval=15))
+                ax.xaxis.set_major_formatter(FuncFormatter(_time_fmt))
+                for tick in ax.get_xticklabels():
+                    tick.set_rotation(-20)
+                    tick.set_ha("left")
+            else:
+                ax.tick_params(axis="x", labelbottom=False)
+
+            if c == 0:
+                ax.set_ylabel("Distance (km)", fontsize=label_fs)
+            else:
+                ax.tick_params(axis="y", labelleft=False)
+
+    # Fewer y ticks
+    yticks = np.arange(0, y_max + 1e-9, 1.4)
+    for r in range(nrows):
+        axes[r, 0].set_yticks(yticks)
+
+    if show_gt:
+        fig.canvas.draw()
+        # Horizontal row labels
+        for r, label in enumerate(labels):
+            sim_mape = mape(v_hat[:, 1:-1], data[label]["v_sim"][0:-1, :])
+            pos = axes[r, 0].get_position()
+            y_center = (pos.y0 + pos.y1) / 2
+            fig.text(
+                pos.x0 - 0.15,
+                y_center,
+                label + f"\n{sim_mape:.1f}% MAPE",
+                ha="center",
+                va="center",
+                fontsize=rowlabel_fs,
+                # fontstyle="italic",
+                fontweight="bold",
+            )
+        # ---------------------------------------------
+        # Add centered v_hat and right-side colorbar
+        # ---------------------------------------------
+
+        top_pos = axes[0, -1].get_position()
+        bot_pos = axes[-1, -1].get_position()
+
+        # Use the same width as a regular subplot
+        ref_pos = axes[0, 0].get_position()
+        subplot_w = ref_pos.x1 - ref_pos.x0
+        subplot_h = ref_pos.y1 - ref_pos.y0
+
+        grid_y0 = bot_pos.y0
+        grid_y1 = top_pos.y1
+        grid_h = grid_y1 - grid_y0
+
+        vhat_h = subplot_h
+        vhat_w = subplot_w
+        gap = 0.1
+        cbar_w = 0.012
+
+        vhat_x0 = top_pos.x1 + 0.035
+        vhat_y0 = grid_y0 + 0.70 * (grid_h - vhat_h)
+
+        ax_vhat = fig.add_axes(
+            [vhat_x0, vhat_y0, vhat_w, vhat_h],
+            sharex=axes[0, 0],
+            sharey=axes[0, 0],
+        )
+
+        # Horizontal colorbar below v_hat
+        cbar_h = 0.035
+        cbar_gap = 0.18
+        cax = fig.add_axes(
+            [vhat_x0, vhat_y0 - cbar_gap - cbar_h, vhat_w, cbar_h]
+        )
+
+        vhat_arr = np.asarray(v_hat[:, 1:-1])
+
+        im_vhat = ax_vhat.imshow(
+            vhat_arr.T,
+            aspect="auto",
+            origin="lower",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            interpolation="nearest",
+            extent=[
+                mdates.date2num(start_dt),
+                mdates.date2num(start_dt + timedelta(seconds=dt_seconds * vhat_arr.shape[0])),
+                y_min,
+                y_max,
+            ],
+        )
+
+        ax_vhat.set_title(vhat_title, fontsize=title_fs)
+        ax_vhat.tick_params(labelsize=tick_fs)
+        ax_vhat.tick_params(axis="y", labelleft=False)
+        ax_vhat.xaxis.set_major_locator(mdates.MinuteLocator(interval=15))
+        ax_vhat.xaxis.set_major_formatter(FuncFormatter(_time_fmt))
+        ax_vhat.set_xlabel("Time", fontsize=label_fs)
+        ax_vhat.set_yticks(yticks)
+
+        if show_colorbar:
+            cbar = fig.colorbar(im_vhat, cax=cax, orientation="horizontal")
+            cbar.set_label(colorbar_label, fontsize=label_fs)
+            cbar.ax.tick_params(labelsize=tick_fs)
+    plt.savefig(save_path, bbox_inches="tight")
     plt.show()

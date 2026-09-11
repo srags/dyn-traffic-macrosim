@@ -10,7 +10,7 @@ def density_dynamics(current: float, inflow: float, outflow: float, lanes: int, 
                     beta: float = 0.0, r: float = 0.0) -> float:
     """Update density with conservation equation (per segment).
     """
-    return current + T / (l * lanes) * (inflow - outflow / (1 - beta) + r)
+    return max(0, current + T / (l * lanes) * (inflow - outflow / (1 - beta) + r))
 
 
 def flow_dynamics(density: float, velocity: float, lanes: int) -> float:

@@ -1,9 +1,3 @@
-# Ignore everything in these directories...
-i24-data/*
-
-# ...but keep the placeholder file
-!i24-data/.gitkeep
-
 # Other ignores
 .ipynb_checkpoints/
 __pycache__/
@@ -14,6 +8,16 @@ __pycache__/
 
 # Legacy code and results (kept locally, see tag pre-cleanup-snapshot)
 old_code/
+
+# Other results, not complete yet so don't want to commit
+basin_results/
+cdc_results/
+
+# Cintra data, not public
+data/i35_northbound/
+data/i35_southbound/
+data/I_35W_data_raw/
+data/I5_400m_10s_16segments/
 
 # Optuna study databases
 *.db

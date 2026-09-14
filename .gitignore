@@ -11,3 +11,9 @@ __pycache__/
 .DS_Store
 .env
 .vscode/
+
+# Legacy code and results (kept locally, see tag pre-cleanup-snapshot)
+old_code/
+
+# Optuna study databases
+*.db

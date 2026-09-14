@@ -276,7 +276,7 @@ def calibrate_params_mpc(
             smoothing=False,
             constraint_tol=constraint_tol,
             robust_opt=robust_opt,
-            warmstart=warmstart_path, #"calibration_results/robust_S5_0001" if ind_start == 0 else f"{results_root_dir}/control_h_{control_h}/params_{ind_start // control_h}",
+            warmstart=warmstart_path, #"old_code/calibration_results/robust_S5_0001" if ind_start == 0 else f"{results_root_dir}/control_h_{control_h}/params_{ind_start // control_h}",
             lane_mapping=lane_mapping,
             prev_param_path = f"{mpc_results_dir(results_root_dir, control_h)}/params_{ind_start // control_h}" if stable_params and ind_start > 0 else None,
             ramp_mapping=ramp_mapping,

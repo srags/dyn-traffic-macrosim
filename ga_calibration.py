@@ -465,7 +465,7 @@ if __name__ == "__main__":
         seed=42,
         n_jobs=1,            # increase to parallelise (run_metanet_sim must be thread-safe)
         study_name="metanet_calibration",
-        storage="sqlite:///metanet2500.db",        # e.g. "sqlite:///metanet.db" to persist results across runs
+        storage="sqlite:///calibration/i24/i24_11_30/ga_calibration/metanet2500.db",        # e.g. "sqlite:///metanet.db" to persist results across runs
     )
 
     # ── PRINT & SAVE RESULTS ──────────────────────────────────────────────────
@@ -473,7 +473,7 @@ if __name__ == "__main__":
     best_params = extract_best_params(study, N_SEGMENTS, ramp_mapping)
     print_param_table(best_params, N_SEGMENTS)
     
-    results_dir = "ga_calibration_results/trials2500"
+    results_dir = "calibration/i24/i24_11_30/ga_calibration/trials2500"
     save_results(
         results={**best_params, "num_lanes": num_lanes_array},
         RESULTS_DIR=results_dir,

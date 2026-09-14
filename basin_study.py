@@ -51,14 +51,14 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # --- Your measured traffic data (numpy arrays) ---
-q_hat = np.load("data/flow_10sec_400m_1hr.npy")#[240:270, :]
-rho_hat = np.load("data/density_10sec_400m_1hr.npy")#[240:270, :]
+q_hat = np.load("data/i24/i24_11_30/q_hat.npy")#[240:270, :]
+rho_hat = np.load("data/i24/i24_11_30/rho_hat.npy")#[240:270, :]
 rho_hat = np.where(rho_hat == 0.0, 1e-3, rho_hat)
 q_hat = np.where(q_hat == 0.0, 1e-3, q_hat)
 
-lane_map = np.load("data/lane_mapping.npy")
+lane_map = np.load("data/i24/i24_11_30/lane_mapping.npy")
 lane_mapping = {i: float(lane_map[i+1]) for i in range(len(lane_map)-2)}
-ramp_mapping = {"on_ramps": np.load("data/on_ramp_mapping.npy")[1:-1], "off_ramps": np.load("data/off_ramp_mapping.npy")[1:-1]}
+ramp_mapping = {"on_ramps": np.load("data/i24/i24_11_30/on_ramp_mapping.npy")[1:-1], "off_ramps": np.load("data/i24/i24_11_30/off_ramp_mapping.npy")[1:-1]}
 
 # --- Fixed calibration settings (mirrors your normal run_calibration call) ---
 CALIB_KWARGS = dict(

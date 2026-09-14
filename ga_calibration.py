@@ -422,15 +422,15 @@ if __name__ == "__main__":
     l = 0.4       # segment lengths [km]
 
     # --- Your measured traffic data (numpy arrays) ---
-    q_hat = np.load("data/flow_10sec_400m_1hr.npy")#[240:270, :]
-    rho_hat = np.load("data/density_10sec_400m_1hr.npy")#[240:270, :]
+    q_hat = np.load("data/i24/i24_11_30/q_hat.npy")#[240:270, :]
+    rho_hat = np.load("data/i24/i24_11_30/rho_hat.npy")#[240:270, :]
     rho_hat = np.where(rho_hat == 0.0, 1e-3, rho_hat)
     q_hat = np.where(q_hat == 0.0, 1e-3, q_hat)
     v_hat = q_hat / rho_hat
 
 
-    num_lanes_array = np.load("data/lane_mapping.npy")[1:-1]
-    ramp_mapping = {"on_ramps": np.load("data/on_ramp_mapping.npy")[1:-1], "off_ramps": np.load("data/off_ramp_mapping.npy")[1:-1]}
+    num_lanes_array = np.load("data/i24/i24_11_30/lane_mapping.npy")[1:-1]
+    ramp_mapping = {"on_ramps": np.load("data/i24/i24_11_30/on_ramp_mapping.npy")[1:-1], "off_ramps": np.load("data/i24/i24_11_30/off_ramp_mapping.npy")[1:-1]}
 
     downstream_density = smooth_inflow(rho_hat[:, -1]) / num_lanes_array[-1]
     data_inflow = smooth_inflow(q_hat[:, 0])

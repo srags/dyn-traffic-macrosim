@@ -1,6 +1,18 @@
 # Dynamic Calibration for Traffic Macrosimulation
 This repo contains the code, data and results for paper [Dynamic Gradient-Based Calibration for Robust and Accurate Traffic Macrosimulation](https://arxiv.org/pdf/2605.19056v2). This paper is published at 2026 IEEE Intelligent Systems Transportation Conference. Please cite the work when using this repo.
 
+```bibtex
+@misc{raghavan2026dynamic,
+  title         = {Dynamic Gradient-Based Calibration for Robust and Accurate Traffic Macrosimulation},
+  author        = {Raghavan, Shreyaa and Hickert, Cameron and Chan, Monica and Wu, Cathy},
+  year          = {2026},
+  eprint        = {2605.19056},
+  archivePrefix = {arXiv},
+  primaryClass  = {eess.SY},
+  url           = {https://arxiv.org/abs/2605.19056}
+}
+```
+
 ## Environment setup
 Tested on macOS with Python 3.14 and IPOPT 3.14.16.
 

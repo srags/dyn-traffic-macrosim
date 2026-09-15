@@ -210,7 +210,7 @@ def _load_average_over_all_segments(cache_dir, cfg, perturb_pct):
     return avg_results, loaded_pct_ref, metadata
 
 #############
-def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", percentile=False, g_fontsize=24, save_path=None, figname=None, highlight_hor=None):
+def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", percentile=False, g_fontsize=24, save_path=None, figname=None, highlight_hor=None, horizon_decimals=None):
     """
     Plot percentile curves from multiple root directories only if they contain noise_robustness_results.csv files. 
     Run evaluate robustness function to generate these files for different methods and horizons. 
@@ -396,7 +396,11 @@ def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", perce
             marker = 'd' if e['horizon'] in highlight_hor else None
             marker_size = 10 if e['horizon'] in highlight_hor else None
             if e['horizon'] is not None:
-                legend_label = f"Dynamic: {e['horizon'] * 10 // 60} min"
+                if horizon_decimals is None:
+                    legend_label = f"Dynamic: {e['horizon'] * 10 // 60} min"
+                else:
+                    # e.g. horizon_decimals=1 gives "Dynamic: 0.2 min" for a 1-step (10 s) horizon
+                    legend_label = f"Dynamic: {e['horizon'] * 10 / 60:.{horizon_decimals}f} min"
             else:
                 legend_label = "Dynamic"
         elif method == 'OCP':

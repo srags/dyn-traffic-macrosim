@@ -247,9 +247,6 @@ def calibrate_params_mpc(
 
         if warmstart is None:
             warmstart_path = None
-        elif warmstart == "use_standard_mpc":
-            warmstart_path = f"mpc_calibration_results/control_h_{control_h}/params_{ind_start // control_h + 1}"
-            # Check if warmstart file has control_h folders in it
         elif os.path.exists(warmstart + f"/control_h_{control_h}"):
             warmstart_path = f"{warmstart}/control_h_{control_h}/params_{ind_start // control_h + 1}"
         else: 

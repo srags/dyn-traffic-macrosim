@@ -216,6 +216,8 @@ def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", perce
     Run evaluate robustness function to generate these files for different methods and horizons. 
     The metric argument can be "mean" or "max" to plot either the average MAPE or worst-case MAPE across noise perturbations.
     """
+    if highlight_hor is None:
+        highlight_hor = []
 
     blue_purple_colors = {
         0 :  "#4ACEBC",
@@ -314,7 +316,7 @@ def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", perce
         label = os.path.basename(root_dir.rstrip('/')) or root_dir
         rd_lower = root_dir.lower()
 
-        if 'ocp' in rd_lower:
+        if 'ocp' in rd_lower or 'calibration_static' in rd_lower:
             method = 'OCP'
         elif ('mpc' in rd_lower or "dynamic" in rd_lower) and 'robust' not in rd_lower:
             method = 'MPC'
@@ -385,6 +387,7 @@ def plot_percentile_curves(root_dirs, desired_legend_order, metric="mean", perce
         rd_lower = e['root_dir'].lower()
         marker = None
         marker_size = None
+        linestyle = '-'
 
         if method == 'MPC':
             color = mpc_color_dict.get(e['horizon'], None)

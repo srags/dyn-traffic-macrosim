@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from simulation_utils import run_metanet_sim
 import optimization_utils as opt
 from param_loader import METANET_Params
+import paths
 from typing import Callable, Dict, List, Optional, Any, Tuple
 
 def mpc_results_dir(root, control_horizon):
@@ -132,7 +133,7 @@ def plot_mpc_acc_robustness(root_dir, control_horizons, percent_noise=[0.001], m
 
     ax.legend(handles, labels, fontsize=g_fontsize - 1)
     plt.tight_layout()
-    plt.savefig("dippy_plot.pdf", bbox_inches='tight', pad_inches=0)
+    plt.savefig(paths.fig("dippy_plot.pdf"), bbox_inches='tight', pad_inches=0)
 
     plt.show()
 

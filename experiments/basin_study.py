@@ -41,6 +41,15 @@ from joblib import Parallel, delayed
 from pyomo.opt import TerminationCondition
 
 # Your (modified) calibration entry-point
+import os
+import sys
+
+# Put src/ on the import path and run from the repo root so relative data/ and
+# calibration/ paths resolve no matter where this script is launched from.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
+os.chdir(_REPO_ROOT)
+
 import optimization_utils as opt
 
 warnings.filterwarnings("ignore", category=UserWarning)

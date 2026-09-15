@@ -12,6 +12,7 @@ import matplotlib.colors as mcolors
  
 from simulation_utils import *
 from param_loader import METANET_Params
+import paths
 import optimization_utils as opt
 import matplotlib.dates as mdates
 from matplotlib.ticker import FuncFormatter
@@ -568,11 +569,11 @@ def run_and_plot_perturbations(param_configs, T, l, num_calibrated_segments,
     title_fs = g_fontsize + 8
 
     # ── Load shared ground truth data ─────────────────────────────────────────
-    rho_hat = np.load("data/i24/i24_11_30/rho_hat.npy")
-    q_hat = np.load("data/i24/i24_11_30/q_hat.npy")
+    rho_hat = np.load(os.path.join(paths.i24_data("11_30"), "rho_hat.npy"))
+    q_hat = np.load(os.path.join(paths.i24_data("11_30"), "q_hat.npy"))
     v_hat = q_hat / rho_hat
 
-    lane_mapping = np.load("data/i24/i24_11_30/lane_mapping.npy")
+    lane_mapping = np.load(os.path.join(paths.i24_data("11_30"), "lane_mapping.npy"))
     rho_hat = rho_hat / lane_mapping
 
     # ── Run or load perturbation for each config ──────────────────────────────

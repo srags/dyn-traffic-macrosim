@@ -1,3 +1,4 @@
+import paths
 import json
 import numpy as np
 import pandas as pd
@@ -230,11 +231,11 @@ def get_flow_density_matrix(
         plt.ylabel("Count")
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(f"data/histogram_ypos_spacebin_{space_bin}.png")  # Save to file
+        plt.savefig(os.path.join(paths.DATA_ROOT, f"histogram_ypos_spacebin_{space_bin}.png"))  # Save to file
         plt.close()
     print(grouped)
 
-    full_filepath = "data/" + output_filename
+    full_filepath = os.path.join(paths.DATA_ROOT, output_filename)
     form_csv(
         flow_matrix,
         density_matrix,

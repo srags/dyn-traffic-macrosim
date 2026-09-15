@@ -16,6 +16,15 @@ Usage:
 
 import warnings
 
+import os
+import sys
+
+# Put src/ on the import path and run from the repo root so relative data/ and
+# calibration/ paths resolve no matter where this script is launched from.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
+os.chdir(_REPO_ROOT)
+
 from optimization_utils import smooth_inflow
 warnings.filterwarnings("ignore")
 

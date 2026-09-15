@@ -2,7 +2,6 @@ import numpy as np
 import simulation_utils as sim
 from param_loader import METANET_Params
 import csv
-import plotting
 
 
 def mape(flow_hat, flow_pred):
@@ -67,6 +66,7 @@ def generate_perturbations(signal, percent_noise=0.1, seed=0, num=100):
 
 def eval_robustness_static(v_gt, params, data_inflow, downstream_density, init_state, lanes, 
                            T=10/3600, l=0.4, percent_noises=[0.1], plotting_dir=None, save_results=False, rho_gt=None):
+    import plotting  # imported here to avoid a circular import with optimization_utils
     noise_results = []
     for percent_noise in percent_noises:
         true_rho_sim, true_v_sim, _, _ = sim.run_metanet_sim(T,
@@ -143,6 +143,7 @@ def eval_robustness_static(v_gt, params, data_inflow, downstream_density, init_s
 def eval_robustness_dynamic(v_gt, control_len, params_dir, data_inflow, downstream_density, init_traffic_state, lanes,
                             T=10/3600, l=0.4, percent_noises=[0.1], save_results=False, rho_gt=None):
     import mpc_utils as mpc
+    import plotting  # imported here to avoid a circular import with optimization_utils
 
     noise_results = []
 
@@ -234,6 +235,7 @@ def eval_robustness_dynamic(v_gt, control_len, params_dir, data_inflow, downstre
 def plot_worst_case_simulations(v_gt, control_len, params_dir, data_inflow, downstream_density, init_traffic_state,
                             T=10/3600, l=0.4, percent_noises=[0.1]):
     import mpc_utils as mpc
+    import plotting  # imported here to avoid a circular import with optimization_utils
     
     for percent_noise in percent_noises:
         _, true_v_sim = mpc.simulate_multiple_params(init_traffic_state,

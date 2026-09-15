@@ -1,0 +1,20 @@
+# Python 3.14 (see README for environment setup).
+# IPOPT 3.14.16 is also required but is not pip-installable; see README.
+
+# Core
+numpy==2.3.4
+scipy==1.16.2
+pandas==2.3.3
+matplotlib==3.10.7
+seaborn==0.13.2
+pyomo==6.9.5
+ijson==3.4.0.post0
+
+# Baselines and landscape study (experiments/ga_calibration.py, experiments/basin_study.py)
+optuna==5.0.0
+scikit-learn==1.9.1
+joblib==1.6.0
+
+# Notebooks
+jupyterlab==4.4.10
+ipykernel==7.0.1

@@ -2,6 +2,10 @@
 raw_i24_data/*
 !raw_i24_data/.gitkeep
 
+# Python environments
+calib_env/
+calib/
+
 # Other ignores
 .ipynb_checkpoints/
 __pycache__/

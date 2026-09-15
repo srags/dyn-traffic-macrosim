@@ -1,8 +1,10 @@
-# Ignore everything in these directories...
-i24-data/*
+# Raw I-24 MOTION data (download separately; see README)
+raw_i24_data/*
+!raw_i24_data/.gitkeep
 
-# ...but keep the placeholder file
-!i24-data/.gitkeep
+# Python environments
+calib_env/
+calib/
 
 # Other ignores
 .ipynb_checkpoints/
@@ -11,3 +13,24 @@ __pycache__/
 .DS_Store
 .env
 .vscode/
+
+# Legacy code and results (kept locally, see tag pre-cleanup-snapshot)
+old_code/
+
+# Other results, not complete yet so don't want to commit
+basin_results/
+cdc2026/
+
+# Cintra data, not public
+data/i35_northbound/
+data/i35_southbound/
+data/I_35W_data_raw/
+data/I5_400m_10s_16segments/
+
+# Stale notebooks, kept locally only
+experiments/Tolerance_test.ipynb
+experiments/server_text.ipynb
+experiments/I_35W_data.ipynb
+
+# Optuna study databases
+*.db

@@ -95,11 +95,14 @@ def fit_fd1(
     flattened_rho_hat,
     flattened_q_hat,
     C_i=None,
-    V_free_init=60,
+    V_free_init=100,
     a_init=1.0,
     solver_name="ipopt",
     plot=True,
     top_k_for_C=5,
+    V_free_bounds=(70, 150),
+    rho_crit_bounds=(15, 100),
+    a_bounds=(0.5, 5),
 ):
     """
     Fit a smooth FD1 fundamental diagram to (rho_hat, q_hat) data using Pyomo.
@@ -107,9 +110,9 @@ def fit_fd1(
     Parameters
     ----------
     flattened_rho_hat : array-like
-        Density measurements (veh/km).
+        Density measurements (veh/km/lane).
     flattened_q_hat : array-like
-        Flow measurements (veh/h).
+        Flow measurements (veh/h/lane).
     C_i : float or None
         Fixed capacity value. If None, capacity is estimated from the top K flows.
     V_free_init : float
@@ -122,6 +125,10 @@ def fit_fd1(
         Whether to plot the fitted curve and data.
     top_k_for_C : int
         Number of top flow values to average for capacity estimate if C_i is None.
+    V_free_bounds, rho_crit_bounds, a_bounds : tuple
+        (lower, upper) bounds on V_free (km/h), rho_crit (veh/km/lane) and a. The
+        defaults match the METANET calibration bounds and assume per-lane data;
+        widen rho_crit_bounds when fitting total (all-lane) density.
 
     Returns
     -------
@@ -151,10 +158,11 @@ def fit_fd1(
 
     # Variables
     model.rho_crit = Var(
-        bounds=(1e-2, max(flattened_rho_hat)), initialize=np.median(flattened_rho_hat)
+        bounds=rho_crit_bounds,
+        initialize=float(np.clip(np.median(flattened_rho_hat), *rho_crit_bounds)),
     )
-    model.V_free = Var(bounds=(10, 150), initialize=V_free_init)
-    model.a = Var(bounds=(0.01, 10), initialize=a_init)
+    model.V_free = Var(bounds=V_free_bounds, initialize=float(np.clip(V_free_init, *V_free_bounds)))
+    model.a = Var(bounds=a_bounds, initialize=float(np.clip(a_init, *a_bounds)))
 
     # Smoothed flow function
     def q_pred_expr(model, k):

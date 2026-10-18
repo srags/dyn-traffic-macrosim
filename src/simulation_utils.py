@@ -6,11 +6,24 @@ from typing import Dict, Tuple, Optional
 # Core METANET helper functions
 # ----------------------------
 
+def density_dynamics_raw(current: float, inflow: float, outflow: float, lanes: int,
+                         T: float, l: float, beta: float = 0.0,
+                         r: float = 0.0) -> float:
+    """Return the unclipped METANET density update for one segment.
+
+    Keeping the raw update separate lets stress tests detect that the numerical
+    dynamics attempted to produce a negative or non-finite density. Normal
+    simulation callers still receive the clipped value from
+    :func:`density_dynamics`.
+    """
+    return current + T / (l * lanes) * (inflow - outflow / (1 - beta) + r)
+
+
 def density_dynamics(current: float, inflow: float, outflow: float, lanes: int, T: float, l: float,
                     beta: float = 0.0, r: float = 0.0) -> float:
-    """Update density with conservation equation (per segment).
-    """
-    return max(0, current + T / (l * lanes) * (inflow - outflow / (1 - beta) + r))
+    """Update density with the existing non-negative numerical safeguard."""
+    raw_density = density_dynamics_raw(current, inflow, outflow, lanes, T, l, beta, r)
+    return max(0, raw_density)
 
 
 def flow_dynamics(density: float, velocity: float, lanes: int) -> float:
@@ -30,12 +43,35 @@ def calculate_V(rho: float, v_ctrl: float, a: float, p_crit: float, v_free: floa
     # assert - (rho / p_crit) ** a / a < 700, f"Overflow in desired speed calculation, pow too large: { - (rho / p_crit) ** a / a}, rho={rho}, p_crit={p_crit}, a={a}"
     # if rho <= 0:
     #     print("Warning: non-positive density in calculate_V:", rho)
-    return v_free * np.exp(- (rho / p_crit) ** a / a)
+    uncontrolled_speed = v_free * np.exp(- (rho / p_crit) ** a / a)
+    return min(uncontrolled_speed, v_ctrl)
 
 
 def calculate_V_arr(rho_arr: np.ndarray, v_ctrl_arr: np.ndarray, a: float, p_crit: float, v_free: float) -> np.ndarray:
     """Vectorized desired speed function. Not used in sim, but useful for plotting."""
     return np.minimum(v_free * np.exp(- (rho_arr / p_crit) ** a / a), v_ctrl_arr)
+
+
+def velocity_dynamics_raw_MN(current: float,
+                             prev_state: float,
+                             density: float,
+                             next_density: float,
+                             v_ctrl: float,
+                             T: float,
+                             l: float,
+                             eta_high: float = 30.0,
+                             K: float = 40.0,
+                             tau: float = 18 / 3600,
+                             a: float = 1.4,
+                             p_crit: float = 37.45,
+                             v_free: float = 120.0) -> float:
+    """Return the unclipped one-step METANET velocity update."""
+    return (
+        current
+        + T / tau * (calculate_V(density, v_ctrl, a, p_crit, v_free) - current)
+        + T / l * current * (prev_state - current)
+        - (eta_high * T) / (tau * l) * (next_density - density) / (density + K)
+    )
 
 
 def velocity_dynamics_MN(current: float,
@@ -51,16 +87,23 @@ def velocity_dynamics_MN(current: float,
                          a: float = 1.4,
                          p_crit: float = 37.45,
                          v_free: float = 120.0) -> float:
-    """One-step METANET velocity update with standard terms.
-    Returns a small positive floor to avoid non-physical negative velocities.
-    """
-    nxt = (
-        current
-        + T / tau * (calculate_V(density, v_ctrl, a, p_crit, v_free) - current)
-        + T / l * current * (prev_state - current)
-        - (eta_high * T) / (tau * l) * (next_density - density) / (density + K)
+    """One-step METANET velocity update with its existing positive floor."""
+    raw_velocity = velocity_dynamics_raw_MN(
+        current,
+        prev_state,
+        density,
+        next_density,
+        v_ctrl,
+        T,
+        l,
+        eta_high=eta_high,
+        K=K,
+        tau=tau,
+        a=a,
+        p_crit=p_crit,
+        v_free=v_free,
     )
-    return max(1e-4, nxt)
+    return max(1e-4, raw_velocity)
 
 
 def origin_flow_dynamics_MN(demand: float,
@@ -102,7 +145,8 @@ def metanet_step(t: int,
                  params: Dict[str, np.ndarray],
                  lanes: Dict[int, int],
                  real_data: bool = False,
-                 ) -> Tuple[np.ndarray, np.ndarray, float, float, np.ndarray]:
+                 return_diagnostics: bool = False,
+                 ) -> tuple:
     """Compute a single simulation step (t -> t+1) for METANET.
 
     Args:
@@ -117,6 +161,9 @@ def metanet_step(t: int,
         lanes: dict mapping segment index -> number of lanes.
         real_data: if True, use demand directly for first cell inflow; otherwise use origin flow.
         upstream_velocity: optional (time_steps,) boundary velocity for the first cell.
+        return_diagnostics: if True, append raw pre-clipping values and clipping
+            flags to the normal return tuple. The default preserves the original
+            five-value API.
 
     Returns:
         density_tp1, velocity_tp1, queue_tp1, flow_origin_tp1, flow_tp1
@@ -126,6 +173,7 @@ def metanet_step(t: int,
     """
     num_segments = density_t.shape[0]
     density_tp1 = np.empty_like(density_t, dtype=float)
+    raw_density_tp1 = np.empty_like(density_t, dtype=float)
 
     # --- density update ---
     for i in range(num_segments):
@@ -136,16 +184,20 @@ def metanet_step(t: int,
         if i == 0:
             inflow = demand[t] if real_data else flow_origin_t
             outflow = density_t[i] * velocity_t[i] * lanes[i]
-            density_tp1[i] = density_dynamics(density_t[i], inflow, outflow, lanes[i], T, l,
-                                            beta=beta, r=r)
+            raw_density_tp1[i] = density_dynamics_raw(
+                density_t[i], inflow, outflow, lanes[i], T, l, beta=beta, r=r
+            )
         else:
             inflow = density_t[i - 1] * velocity_t[i - 1] * lanes[i - 1]
             outflow = density_t[i] * velocity_t[i] * lanes[i]
-            density_tp1[i] = density_dynamics(density_t[i], inflow, outflow, lanes[i], T, l,
-                                              beta=beta, r=r)
+            raw_density_tp1[i] = density_dynamics_raw(
+                density_t[i], inflow, outflow, lanes[i], T, l, beta=beta, r=r
+            )
+        density_tp1[i] = max(0, raw_density_tp1[i])
 
     # --- velocity update ---
     velocity_tp1 = np.empty_like(velocity_t, dtype=float)
+    raw_velocity_tp1 = np.empty_like(velocity_t, dtype=float)
     for i in range(num_segments):
         kwargs = dict(
             eta_high=_get_time_space_param(params["eta_high"], t, i),
@@ -158,17 +210,18 @@ def metanet_step(t: int,
         if i == 0:
             prev_vel = velocity_t[i]
             next_dens = density_t[i + 1] if num_segments > 1 else downstream_density[t]
-            velocity_tp1[i] = velocity_dynamics_MN(
+            raw_velocity_tp1[i] = velocity_dynamics_raw_MN(
                 velocity_t[i], prev_vel, density_t[i], next_dens, vsl_speeds[t, i], T, l, **kwargs
             )
         elif i == num_segments - 1:
-            velocity_tp1[i] = velocity_dynamics_MN(
+            raw_velocity_tp1[i] = velocity_dynamics_raw_MN(
                 velocity_t[i], velocity_t[i - 1], density_t[i], downstream_density[t], vsl_speeds[t, i], T, l, **kwargs
             )
         else:
-            velocity_tp1[i] = velocity_dynamics_MN(
+            raw_velocity_tp1[i] = velocity_dynamics_raw_MN(
                 velocity_t[i], velocity_t[i - 1], density_t[i], density_t[i + 1], vsl_speeds[t, i], T, l, **kwargs
             )
+        velocity_tp1[i] = max(1e-4, raw_velocity_tp1[i])
 
     # --- queue update (only when not using real data) ---
     if not real_data:
@@ -192,6 +245,17 @@ def metanet_step(t: int,
         flow_origin_tp1 = origin_flow_dynamics_MN(
             demand[t + 1], density_tp1[0], queue_tp1, lanes[0], T, p_max=180.0, p_crit=pcrit0, q_capacity=qcap0
         )
+
+    if return_diagnostics:
+        diagnostics = {
+            "raw_density": raw_density_tp1.copy(),
+            "raw_velocity": raw_velocity_tp1.copy(),
+            "density_clipped": raw_density_tp1 < 0,
+            "velocity_clipped": raw_velocity_tp1 < 1e-4,
+            "nonfinite_raw_density": ~np.isfinite(raw_density_tp1),
+            "nonfinite_raw_velocity": ~np.isfinite(raw_velocity_tp1),
+        }
+        return density_tp1, velocity_tp1, queue_tp1, flow_origin_tp1, flow_tp1, diagnostics
 
     return density_tp1, velocity_tp1, queue_tp1, flow_origin_tp1, flow_tp1
 

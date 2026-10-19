@@ -57,6 +57,13 @@ undisturbed 15-minute validity gate. The dynamic case is deliberately
 **frozen**: it replays the previously calibrated time-varying parameters but
 does not recalibrate in response to an AST disturbance.
 
+The VSL action grid defaults to speeds from 40 through 75 mph in five-mph
+increments, plus an unrestricted action. Values are converted to km/h
+before being passed to METANET. Smaller reductions from 75 mph receive higher
+nominal probability, and minimum-intervention cost increases by one point per
+mph of additional reduction. The bounds, step, and probability-decay scale are
+available as command-line options.
+
 Run all three modes from the repository root:
 
 ```bash

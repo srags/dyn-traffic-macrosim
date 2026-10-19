@@ -272,10 +272,14 @@ def run_experiments(args: argparse.Namespace) -> Dict[str, object]:
         seed=args.seed,
     )
 
-    # One common VSL is applied to all segments in this first POC. Passing an
-    # explicit segment list to proof_of_concept() supports a later spatially
-    # localized experiment without changing MCTS.
-    vsl_model = VSLActionModel.proof_of_concept()
+    # One common VSL is applied to all segments in this first POC. The action
+    # labels use mph, while their values are converted to METANET's km/h units.
+    vsl_model = VSLActionModel.proof_of_concept(
+        min_speed_mph=args.vsl_min_mph,
+        max_speed_mph=args.vsl_max_mph,
+        step_mph=args.vsl_step_mph,
+        probability_decay_mph=args.vsl_probability_decay_mph,
+    )
 
     # This exactly follows the existing repository convention: a requested
     # percent of the nominal inflow's standard deviation.
@@ -304,7 +308,12 @@ def run_experiments(args: argparse.Namespace) -> Dict[str, object]:
                 "actions": [
                     {
                         "label": action.label,
-                        "speed": action.speed,
+                        "speed_kmh": action.speed,
+                        "speed_mph": (
+                            None
+                            if action.label == "unrestricted"
+                            else action.speed / VSLActionModel.MPH_TO_KMH
+                        ),
                         "probability": vsl_model.action_probability(action),
                         "intervention_cost": vsl_model.intervention_cost(action),
                     }
@@ -401,6 +410,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--action-minutes", type=int, default=1)
     parser.add_argument("--max-density", type=float, default=190.0)
     parser.add_argument("--max-velocity", type=float, default=250.0)
+    parser.add_argument(
+        "--vsl-min-mph",
+        type=float,
+        default=40.0,
+        help="Lowest controlled VSL action in mph (approximately 64 km/h).",
+    )
+    parser.add_argument(
+        "--vsl-max-mph",
+        type=float,
+        default=75.0,
+        help="Highest controlled VSL action in mph (approximately 120 km/h).",
+    )
+    parser.add_argument(
+        "--vsl-step-mph",
+        type=float,
+        default=5.0,
+        help="Spacing between controlled VSL actions in mph.",
+    )
+    parser.add_argument(
+        "--vsl-probability-decay-mph",
+        type=float,
+        default=10.0,
+        help="Exponential scale governing how VSL probability falls with restriction.",
+    )
     parser.add_argument(
         "--inflow-noise-percent",
         type=float,

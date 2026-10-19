@@ -73,25 +73,29 @@ failure thresholds, horizon, and search budget.
 ## VSL and controller extensions
 
 - **Before treating the proof-of-concept VSL setup as final, check with
-  Shreyaa:** review the proposed VSL actions (`unrestricted`, 120, 100, 80,
-  and 60 km/h), their nominal probability distribution, and their
-  minimum-intervention costs. The initial values are modeling assumptions for
-  a simple experiment, not empirically validated operational frequencies.
-
-  | VSL action | Nominal probability | Intervention cost |
-  | --- | ---: | ---: |
-  | Unrestricted | 0.50 | 0 |
-  | 120 km/h | 0.25 | 1 |
-  | 100 km/h | 0.15 | 2 |
-  | 80 km/h | 0.07 | 3 |
-  | 60 km/h | 0.03 | 4 |
+  Shreyaa:** review the proposed VSL actions from 40 through 75 mph, the
+  five-mph spacing, the 0.50 probability assigned to `unrestricted`, the
+  exponential probability decay for progressively lower limits, and the
+  minimum-intervention cost of one point for enabling VSL plus one point per
+  mph below 75. These are modeling assumptions for a simple experiment, not
+  empirically validated operational frequencies or costs.
 
 - Stress test faulty, delayed, missing, or adversarial VSL commands.
 - Add an actual VSL controller and let AST control environmental disturbances
   while the controller chooses the VSL actions.
 - Allow spatially varying VSL values after first testing one segment or one
   fixed segment group.
-- Add limits on VSL switching frequency and magnitude.
+- Make VSL actions state-dependent so the next command can change only by a
+  bounded amount from the previous command. The current five-mph grid uses
+  operationally recognizable values, but AST can still jump directly from
+  `unrestricted` to any speed and apply it across every segment. This
+  instantaneous corridor-wide change may contribute to the very short failure
+  times.
+- As a simple next experiment, permit only one adjacent five-mph step per
+  decision (for example, 65 to 60 or 70 mph). Compare this rate-limited
+  formulation with the current unrestricted-jump formulation.
+- Add limits on VSL switching frequency, including a minimum hold time, after
+  establishing an appropriate per-decision change limit.
 
 ## Additional disturbances
 

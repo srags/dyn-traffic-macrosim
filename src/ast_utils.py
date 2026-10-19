@@ -214,6 +214,8 @@ class VSLAction:
 class VSLActionModel:
     """Discrete VSL actions with both probability and intervention scores."""
 
+    MPH_TO_KMH = 1.609344
+
     name = "vsl"
 
     def __init__(
@@ -247,26 +249,69 @@ class VSLActionModel:
 
     @classmethod
     def proof_of_concept(
-        cls, controlled_segments: Optional[Sequence[int]] = None
+        cls,
+        controlled_segments: Optional[Sequence[int]] = None,
+        *,
+        min_speed_mph: float = 40.0,
+        max_speed_mph: float = 75.0,
+        step_mph: float = 5.0,
+        unrestricted_probability: float = 0.50,
+        probability_decay_mph: float = 10.0,
     ) -> "VSLActionModel":
-        """Return the agreed synthetic VSL model.
+        """Return a fine-grained synthetic VSL model.
 
         ``unrestricted`` uses 1000 km/h, matching the repository's existing
-        no-VSL convention. These probabilities and costs are deliberately easy
-        to replace after review with the traffic-domain coauthor.
+        no-VSL convention. Controlled actions span approximately the original
+        60--120 km/h range but use five-mph increments by default. METANET still
+        receives km/h internally.
+
+        Half of the nominal probability remains on ``unrestricted``. The
+        controlled half decays exponentially as the command moves below the
+        highest VSL, so smaller interventions are more likely. Intervention
+        cost is one point for enabling VSL plus one point per mph reduction.
+        These simple assumptions remain subject to domain review.
         """
 
-        actions = (
-            VSLAction("unrestricted", 1000.0),
-            VSLAction("120", 120.0),
-            VSLAction("100", 100.0),
-            VSLAction("80", 80.0),
-            VSLAction("60", 60.0),
+        if min_speed_mph <= 0 or max_speed_mph < min_speed_mph:
+            raise ValueError("VSL mph bounds must be positive and ordered.")
+        if step_mph <= 0:
+            raise ValueError("VSL step_mph must be positive.")
+        if not 0.0 < unrestricted_probability < 1.0:
+            raise ValueError("Unrestricted probability must lie between zero and one.")
+        if probability_decay_mph <= 0:
+            raise ValueError("VSL probability decay must be positive.")
+
+        # Descending order makes the least restrictive controlled action the
+        # first VSL choice and includes the lower endpoint despite float noise.
+        controlled_mph = np.arange(
+            max_speed_mph,
+            min_speed_mph - step_mph / 2.0,
+            -step_mph,
+            dtype=float,
+        )
+        reductions_mph = max_speed_mph - controlled_mph
+        controlled_weights = np.exp(-reductions_mph / probability_decay_mph)
+        controlled_probabilities = (
+            (1.0 - unrestricted_probability)
+            * controlled_weights
+            / controlled_weights.sum()
+        )
+
+        def mph_label(speed_mph: float) -> str:
+            return (
+                f"{speed_mph:.0f} mph"
+                if float(speed_mph).is_integer()
+                else f"{speed_mph:g} mph"
+            )
+
+        actions = (VSLAction("unrestricted", 1000.0),) + tuple(
+            VSLAction(mph_label(speed), speed * cls.MPH_TO_KMH)
+            for speed in controlled_mph
         )
         return cls(
             actions=actions,
-            probabilities=(0.50, 0.25, 0.15, 0.07, 0.03),
-            costs=(0.0, 1.0, 2.0, 3.0, 4.0),
+            probabilities=(unrestricted_probability, *controlled_probabilities),
+            costs=(0.0, *(1.0 + reductions_mph)),
             controlled_segments=controlled_segments,
         )
 

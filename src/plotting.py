@@ -902,6 +902,81 @@ def plot_fd_diagrams(params_list, scenario_info, labels, save_path=None, show_gt
 
     plt.show()
 
+def _param_at(params, key, t, i):
+    p = np.asarray(params[key])
+    return float(p[t, i]) if p.ndim == 2 else float(p.reshape(-1)[i])
+
+
+def plot_fd_panels(params, rho, q, v=None, control_h=None, segments=None, windows=None,
+                   ncols=7, rho_max=80, q_max=None, vmin=0, vmax=120,
+                   cmap="RdYlGn", panel_size=(2.8, 2.4), s=8, title=None, colorbar=True,
+                   save_path=None):
+    """Scatter flow-density points against the calibrated FD in one panel per (window, segment).
+
+    params:    METANET param dict. Each key is (num_segments,) for a static calibration or
+               (num_timesteps, num_segments) for a dynamic one (as from METANET_Params).
+    rho, q, v: per-lane arrays of shape (num_timesteps, num_segments), e.g. from
+               observed_states(...) or model_states(...). Points are colored by v (q/rho if None).
+    control_h: None for static (one window covering all timesteps), else the number of timesteps
+               each parameter set is held for. Panels are then num_windows x num_segments.
+    segments, windows: optional index subsets to plot.
+    """
+    num_timesteps, num_segments = rho.shape
+    if v is None:
+        v = q / np.maximum(rho, 1e-6)
+    segments = list(range(num_segments)) if segments is None else list(segments)
+    dynamic = control_h is not None
+    H = control_h if dynamic else num_timesteps
+    num_windows = math.ceil(num_timesteps / H)
+    windows = list(range(num_windows)) if windows is None else list(windows)
+
+    panels = [(w, i) for w in windows for i in segments]
+    if dynamic:   # one row per parameter window, one column per segment
+        nrows, ncols = len(windows), len(segments)
+    else:
+        ncols = min(ncols, len(panels))
+        nrows = math.ceil(len(panels) / ncols)
+
+    fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True, squeeze=False, layout="constrained",
+                             figsize=(panel_size[0] * ncols, panel_size[1] * nrows))
+    rho_grid = np.linspace(0, rho_max, 400)
+    max_capacity = 0.0
+
+    for k, (w, i) in enumerate(panels):
+        ax = axes.flat[k]
+        t0, t1 = w * H, min((w + 1) * H, num_timesteps)
+        v_free, p_crit, a = (_param_at(params, key, t0, i) for key in ("v_free", "p_crit", "a"))
+        q_fd = opt.fd_curve(rho_grid, v_free, p_crit, a)
+        capacity = q_fd.max()
+        max_capacity = max(max_capacity, capacity)
+
+        sc = ax.scatter(rho[t0:t1, i], q[t0:t1, i], c=v[t0:t1, i], cmap=cmap, vmin=vmin, vmax=vmax, s=s)
+        ax.plot(rho_grid, q_fd, color="k", lw=1.5)
+        ax.axhline(capacity, color="k", ls="--", lw=1)
+        label = f"S{i}  W{w}" if dynamic else f"S{i}"
+        ax.set_title(label, fontsize=9)
+        ax.set_xlim(0, rho_max)
+
+    if q_max is None:   # fit the points and FD peaks, but don't let one degenerate FD squash every panel
+        q_data = np.nanmax(q[:, segments])
+        q_max = 1.1 * max(q_data, min(max_capacity, 1.5 * q_data))
+    axes.flat[0].set_ylim(0, q_max)
+    for ax in axes.flat[len(panels):]:
+        ax.set_visible(False)
+
+    fig.supxlabel(r"$\rho$ (veh/km/lane)")
+    fig.supylabel("q (veh/h/lane)")
+    if title is not None:
+        fig.suptitle(title)
+    if colorbar:
+        fig.colorbar(sc, ax=axes.ravel().tolist(), label="v (km/h)", fraction=0.015, pad=0.005)
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+        fig.savefig(save_path, bbox_inches="tight")
+    plt.show()
+    return fig, axes
+
+
 def plot_time_space_grid(
     data,
     labels,

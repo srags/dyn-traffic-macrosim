@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from math import comb
+from scipy.optimize import least_squares
 from eval_metrics import generate_perturbations, mape, rmse
 from pyomo.environ import (
     ConcreteModel,
@@ -91,149 +93,144 @@ def smooth_inflow(inflow, window_size=2):
     return smoothed
 
 
-def fit_fd1(
-    flattened_rho_hat,
-    flattened_q_hat,
-    C_i=None,
-    V_free_init=100,
-    a_init=1.0,
-    solver_name="ipopt",
-    plot=True,
-    top_k_for_C=5,
-    V_free_bounds=(70, 150),
-    rho_crit_bounds=(15, 100),
-    a_bounds=(0.5, 5),
-):
+FD_KEYS = ("v_free", "p_crit", "a")
+FD_BOUNDS = {"v_free": (70, 150), "p_crit": (15, 100), "a": (0.5, 5)}   # per lane; same as the METANET calibration
+FD_INITS = ((100, 20, 2), (80, 15, 1), (130, 30, 3))
+
+
+def fd_curve(rho, v_free, p_crit, a):
+    """METANET fundamental diagram q = rho * v_free * exp(-(rho / p_crit)^a / a)."""
+    return rho * v_free * np.exp(-(rho / p_crit) ** a / a)
+
+
+def fd_capacity(v_free, p_crit, a):
+    """Peak flow of fd_curve, reached at rho = p_crit."""
+    return p_crit * v_free * np.exp(-1 / a)
+
+
+def _bernstein_basis(s, degree):
+    """(len(s), degree + 1) Bernstein basis on s in [0, 1]."""
+    s = np.asarray(s, dtype=float)[:, None]
+    k = np.arange(degree + 1)
+    return np.array([comb(degree, j) for j in k]) * s ** k * (1 - s) ** (degree - k)
+
+
+def _bernstein_to_power(b, span=1.0):
+    """Convert Bernstein control points on [0, span] to power-basis coefficients c, so the path is
+    c[0] + c[1] * t + c[2] * t**2 + ... for t in [0, span]."""
+    n = len(b) - 1
+    c = np.array([comb(n, k) * sum((-1) ** (k - j) * comb(k, j) * b[j] for j in range(k + 1))
+                  for k in range(n + 1)])
+    return c / span ** np.arange(n + 1)
+
+
+def fit_fd(rho, q, t=None, drift=None, t_span=None, bounds=None, inits=FD_INITS):
     """
-    Fit a smooth FD1 fundamental diagram to (rho_hat, q_hat) data using Pyomo.
+    Least-squares fit of the fundamental diagram fd_curve to (rho, q) data, optionally letting
+    some parameters drift over time.
 
     Parameters
     ----------
-    flattened_rho_hat : array-like
-        Density measurements (veh/km/lane).
-    flattened_q_hat : array-like
-        Flow measurements (veh/h/lane).
-    C_i : float or None
-        Fixed capacity value. If None, capacity is estimated from the top K flows.
-    V_free_init : float
-        Initial guess for free-flow speed.
-    a_init : float
-        Initial guess for shape parameter a.
-    solver_name : str
-        Solver to use (default: 'ipopt').
-    plot : bool
-        Whether to plot the fitted curve and data.
-    top_k_for_C : int
-        Number of top flow values to average for capacity estimate if C_i is None.
-    V_free_bounds, rho_crit_bounds, a_bounds : tuple
-        (lower, upper) bounds on V_free (km/h), rho_crit (veh/km/lane) and a. The
-        defaults match the METANET calibration bounds and assume per-lane data;
-        widen rho_crit_bounds when fitting total (all-lane) density.
+    rho, q : array-like
+        Density (veh/km/lane) and flow (veh/h/lane) observations.
+    t : array-like or None
+        Time of each observation in minutes. Only needed when drift is non-empty.
+    drift : dict or None
+        {parameter: polynomial degree} for the parameters that change over time, e.g.
+        {"v_free": 1} lets v_free change linearly while p_crit and a stay constant. Parameters
+        not listed (or with degree 0) are constant but still fitted. Empty or None fits a static FD.
+    t_span : (start, end) or None
+        Time range (minutes) the drifting paths are defined over. Defaults to (t.min(), t.max()).
+        Pass the full range when fitting a subset, so fits on different subsets are comparable.
+    bounds : dict or None
+        Overrides for FD_BOUNDS, e.g. {"p_crit": (15, 400)} for total (all-lane) density.
+    inits : sequence of (v_free, p_crit, a)
+        Starting points for the static fit; the best is kept. A drifting fit starts from that best
+        static fit held constant over time, so it never fits worse than the static FD.
+
+    Each drifting parameter is a Bernstein polynomial: degree + 1 control points, each within the
+    parameter's bounds. The path is a weighted average of its control points, so it stays within
+    the bounds over the whole of t_span.
 
     Returns
     -------
     dict
-        Optimized parameters {'rho_crit', 'V_free', 'a', 'C'}.
+        params:    {key: control points}, length degree + 1 (length 1 for a constant parameter)
+        coefs:     {key: [c0, c1, ...]} with p(t) = c0 + c1 t + c2 t^2 + ..., t in hours from t_span[0]
+        drift, t_span, rss, n_params
+        params_at: params_at(t) -> {key: values at times t}; t can be omitted for a static fit
+        predict:   predict(rho, t=None) -> fitted flow; t is only needed for a drifting fit
+        capacity:  capacity(t=None) -> peak flow of the FD (at times t for a drifting fit)
     """
+    rho = np.asarray(rho, dtype=float)
+    q = np.asarray(q, dtype=float)
+    bounds = {**FD_BOUNDS, **(bounds or {})}
+    drift = {key: int(d) for key, d in (drift or {}).items() if d}
+    unknown = set(drift) - set(FD_KEYS)
+    if unknown:
+        raise ValueError(f"drift keys must be in {FD_KEYS}, got {sorted(unknown)}")
+    lb, ub = (np.array([bounds[key][side] for key in FD_KEYS], dtype=float) for side in (0, 1))
 
-    # Ensure arrays
-    flattened_rho_hat = np.array(flattened_rho_hat)
-    flattened_q_hat = np.array(flattened_q_hat)
-    K = len(flattened_rho_hat)
+    # Static fit: best of several starting points
+    best = None
+    for x0 in inits:
+        res = least_squares(lambda th: fd_curve(rho, *th) - q, np.clip(x0, lb, ub), bounds=(lb, ub))
+        if best is None or res.cost < best.cost:
+            best = res
+    params = {key: np.array([value]) for key, value in zip(FD_KEYS, best.x)}
+    cost = best.cost
 
-    # Estimate capacity if not provided
-    if C_i is None:
-        C_i = np.mean(sorted(flattened_q_hat)[-top_k_for_C:])
+    if drift:
+        if t is None:
+            raise ValueError("t is required when drift is non-empty")
+        t = np.asarray(t, dtype=float)
+        t_span = (float(t.min()), float(t.max())) if t_span is None else tuple(t_span)
+        s = (t - t_span[0]) / (t_span[1] - t_span[0])   # 0 at the start of t_span, 1 at the end
+        bases = [_bernstein_basis(s, drift.get(key, 0)) for key in FD_KEYS]
+        splits = np.cumsum([B.shape[1] for B in bases])[:-1]
 
-    # Build Pyomo model
-    model = ConcreteModel()
-    model.k = RangeSet(0, K - 1)
+        def paths(th):
+            return [B @ cp for B, cp in zip(bases, np.split(th, splits))]
 
-    # Parameters
-    model.rho_hat = Param(
-        model.k, initialize={k: flattened_rho_hat[k] for k in range(K)}
-    )
-    model.q_hat = Param(model.k, initialize={k: flattened_q_hat[k] for k in range(K)})
-    model.C = Param(initialize=C_i)
+        x0 = np.concatenate([np.full(B.shape[1], params[key][0]) for key, B in zip(FD_KEYS, bases)])
+        lb_d = np.concatenate([np.full(B.shape[1], bounds[key][0]) for key, B in zip(FD_KEYS, bases)])
+        ub_d = np.concatenate([np.full(B.shape[1], bounds[key][1]) for key, B in zip(FD_KEYS, bases)])
+        res = least_squares(lambda th: fd_curve(rho, *paths(th)) - q, x0, bounds=(lb_d, ub_d))
+        params = dict(zip(FD_KEYS, np.split(res.x, splits)))
+        cost = res.cost
+    else:
+        t_span = None
 
-    # Variables
-    model.rho_crit = Var(
-        bounds=rho_crit_bounds,
-        initialize=float(np.clip(np.median(flattened_rho_hat), *rho_crit_bounds)),
-    )
-    model.V_free = Var(bounds=V_free_bounds, initialize=float(np.clip(V_free_init, *V_free_bounds)))
-    model.a = Var(bounds=a_bounds, initialize=float(np.clip(a_init, *a_bounds)))
+    def params_at(t=None):
+        if not drift:
+            if t is None:
+                return {key: float(cp[0]) for key, cp in params.items()}
+            return {key: np.full(np.shape(t), cp[0], dtype=float) for key, cp in params.items()}
+        if t is None:
+            raise ValueError("t is required for a drifting fit")
+        s = (np.atleast_1d(np.asarray(t, dtype=float)) - t_span[0]) / (t_span[1] - t_span[0])
+        return {key: _bernstein_basis(s, len(cp) - 1) @ cp for key, cp in params.items()}
 
-    # Smoothed flow function
-    def q_pred_expr(model, k):
-        rho = model.rho_hat[k]
-        rho_crit = model.rho_crit
-        V_free = model.V_free
-        a = model.a
-        Q = rho * V_free * pyo.exp(-1 / a * (rho / rho_crit) ** a)
-        return Q
+    def predict(rho, t=None):
+        values = params_at(t)
+        return fd_curve(np.asarray(rho, dtype=float), *(values[key] for key in FD_KEYS))
 
-    model.q_pred = Expression(model.k, rule=q_pred_expr)
+    def capacity(t=None):
+        return fd_capacity(**params_at(t))
 
-    # Objective function (least squares)
-    def obj_rule(model):
-        return sum((model.q_pred[k] - model.q_hat[k]) ** 2 for k in model.k)
-
-    model.obj = Objective(rule=obj_rule, sense=minimize)
-
-    # Solve
-    solver = SolverFactory(solver_name)
-    solver.solve(model, tee=False)
-
-    # Extract parameters
-    rho_crit_opt = value(model.rho_crit)
-    V_free_opt = value(model.V_free)
-    a_opt = value(model.a)
-    C_opt = value(model.C)
-
-    # Define fitted FD1 function
-    def Q_fd1(rho):
-        rho = np.array(rho)
-        Q_free = V_free_opt * rho * np.exp(-1 / a_opt * (rho / rho_crit_opt) ** a_opt)
-        return Q_free
-
-    # Plot if requested
-    if plot:
-        rho_range = np.linspace(0, max(flattened_rho_hat) * 1.1, 500)
-        q_fit = Q_fd1(rho_range)
-
-        plt.figure(figsize=(8, 6))
-        plt.scatter(
-            flattened_rho_hat,
-            flattened_q_hat,
-            color="gray",
-            alpha=0.7,
-            label="Data",
-            s=1,
-        )
-        plt.plot(rho_range, q_fit, linewidth=2.5, label="Fitted FD1", zorder=10)
-        plt.axvline(
-            rho_crit_opt,
-            color="red",
-            linestyle="--",
-            label=f"ρ_crit = {rho_crit_opt:.1f}",
-        )
-        plt.axhline(C_opt, color="blue", linestyle=":", label=f"C = {C_opt:.1f}")
-        plt.xlabel("Density ρ (veh/km)")
-        plt.ylabel("Flow q (veh/h)")
-        plt.title("Fundamental Diagram Fit (FD1)")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
-
+    span_h = (t_span[1] - t_span[0]) / 60 if drift else 1.0
     return {
-        "rho_crit": rho_crit_opt,
-        "V_free": V_free_opt,
-        "a": a_opt,
-        "C": C_opt,
-        "Q_fd1": Q_fd1,
+        "params": params,
+        "coefs": {key: _bernstein_to_power(cp, span_h) for key, cp in params.items()},
+        "drift": drift,
+        "t_span": t_span,
+        "rss": 2 * cost,
+        "n_params": sum(len(cp) for cp in params.values()),
+        "params_at": params_at,
+        "predict": predict,
+        "capacity": capacity,
     }
+
 
 def metanet_param_fit(
     v_hat,

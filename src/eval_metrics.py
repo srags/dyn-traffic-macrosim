@@ -1,7 +1,9 @@
 import numpy as np
+import pandas as pd
 import simulation_utils as sim
 from param_loader import METANET_Params
 import csv
+import paths
 
 
 def mape(flow_hat, flow_pred):
@@ -266,3 +268,78 @@ def plot_worst_case_simulations(v_gt, control_len, params_dir, data_inflow, down
                 worst_error = error
         
         plotting.plot_sim_vs_gt(v_gt, worst_v_sim, T, l, percent_noise, save_dir=mpc.mpc_results_dir(params_dir, control_len) + "/figs")
+
+
+I24_HOLIDAYS = ("11_24", "11_25")   # Thanksgiving Thursday and Friday; excluded from cross-day evaluation
+
+
+def _day_id(day):
+    """Accept "11_30" or "i24_11_30" and return "11_30"."""
+    return day[len("i24_"):] if day.startswith("i24_") else day
+
+
+ERROR_METRICS = {"mape": mape, "rmse": rmse}   # MAPE in %, RMSE in the quantity's units
+
+
+def _simulate_day(params, day, T, l):
+    """Run METANET over one I-24 day with that day's boundary conditions and return the errors of the
+    calibrated segments against the day's data: {"v_mape", "v_rmse" (km/h), "rho_mape", "rho_rmse"
+    (veh/km/lane)}. Density is compared per lane."""
+    from optimization_utils import smooth_inflow  # imported here to avoid a circular import
+
+    data_path = paths.i24_data(day)
+    lanes = np.load(f"{data_path}/lane_mapping.npy")
+    rho_hat = np.load(f"{data_path}/rho_hat.npy")   # total density, includes boundary cells
+    q_hat = np.load(f"{data_path}/q_hat.npy")       # total flow, includes boundary cells
+    rho_hat = np.where(rho_hat == 0.0, 1e-3, rho_hat)
+    q_hat = np.where(q_hat == 0.0, 1e-3, q_hat)
+    v_hat = q_hat / rho_hat
+
+    seg_lanes = lanes[1:-1]
+    data_inflow = smooth_inflow(q_hat[:, 0])
+    downstream_density = smooth_inflow(rho_hat[:, -1] / lanes[-1])
+    init_traffic_state = (rho_hat[0, 1:-1] / seg_lanes, v_hat[0, 1:-1], data_inflow[0], 0)
+
+    rho_sim, v_sim, _, _ = sim.run_metanet_sim(T, l, init_traffic_state, data_inflow, downstream_density, params,
+                                               vsl_speeds=None,
+                                               lanes={i: seg_lanes[i] for i in range(len(seg_lanes))},
+                                               plotting=True, real_data=True)
+    observed = {"v": v_hat[:, 1:-1], "rho": rho_hat[:, 1:-1] / seg_lanes}
+    simulated = {"v": v_sim[:-1, :], "rho": rho_sim[:-1, :]}
+    return {f"{quantity}_{name}": fn(observed[quantity], simulated[quantity])
+            for quantity in ("v", "rho") for name, fn in ERROR_METRICS.items()}
+
+
+def evaluate_cross_day(calibrations, train_day, days=None, exclude=I24_HOLIDAYS, T=10/3600, l=0.4):
+    """
+    Evaluate calibrations on the day they were calibrated on and on every other I-24 day.
+
+    Each calibration is simulated over the whole period with each day's boundary conditions (inflow,
+    downstream density, initial state) and compared to that day's data by MAPE and RMSE of speed and
+    (per-lane) density. The train
+    error is computed the same way on train_day. Time-varying (dynamic) parameters are applied by
+    time of day, and calibrated ramp flows are reused as is on every day.
+
+    Parameters:
+        calibrations (dict): {method name: METANET_Params (or its get_params() dict)}
+        train_day (str): Day the calibrations were fit on, e.g. "11_30" or "i24_11_30"
+        days (list or None): Days to evaluate; defaults to every day in data/i24/
+        exclude (tuple): Days to leave out (default: the 11/24 and 11/25 holidays)
+
+    Returns:
+        pd.DataFrame: One row per (method, day) with columns method, day, split ("train"/"test"),
+        v_mape (%), v_rmse (km/h), rho_mape (%) and rho_rmse (veh/km/lane)
+    """
+    train_day = _day_id(train_day)
+    days = [_day_id(d) for d in (paths.i24_dates() if days is None else days)]
+    days = [d for d in days if d not in exclude]
+    if train_day not in days:
+        raise ValueError(f"train_day {train_day} is not among the evaluated days {days}")
+
+    rows = []
+    for method, params in calibrations.items():
+        params = params.get_params() if hasattr(params, "get_params") else params
+        for day in days:
+            rows.append({"method": method, "day": day, "split": "train" if day == train_day else "test",
+                         **_simulate_day(params, day, T, l)})
+    return pd.DataFrame(rows)

@@ -977,6 +977,82 @@ def plot_fd_panels(params, rho, q, v=None, control_h=None, segments=None, window
     return fig, axes
 
 
+CROSS_DAY_QUANTITIES = {"v": ("Speed", "km/h"), "rho": ("Density", "veh/km/lane")}
+
+
+def _cross_day_summary(results, quantity, metric):
+    """Train error and mean / std of the test error per method for one quantity ("v" / "rho") and
+    metric ("mape" / "rmse") of evaluate_cross_day results."""
+    unit = "MAPE (%)" if metric == "mape" else f"RMSE ({CROSS_DAY_QUANTITIES[quantity][1]})"
+    train_col, test_col, std_col = f"Train {unit}", f"Test {unit}", f"Test {unit} std"
+    methods = list(results["method"].unique())
+    by_split = results.groupby(["method", "split"], sort=False)[f"{quantity}_{metric}"]
+    summary = by_split.mean().unstack("split").reindex(methods)
+    summary = summary.rename(columns={"train": train_col, "test": test_col})
+    summary[std_col] = by_split.std().unstack("split").reindex(methods)["test"]
+    summary = summary[[train_col, test_col, std_col]]
+    summary.columns.name = None
+    return summary
+
+
+def plot_cross_day_table(results, save_path, quantity="v", metric="mape", decimals=1, title=None):
+    """
+    Table of train and average test error (MAPE and RMSE) for each calibration method, saved as a PDF.
+
+    Parameters:
+        results (pd.DataFrame): Output of eval_metrics.evaluate_cross_day
+        save_path (str): Where to save the table (PDF)
+        quantity (str): "v" (speed) or "rho" (per-lane density); which errors the table shows
+        metric (str): "mape" or "rmse"; which metric the returned DataFrame holds. The figure always shows both.
+        title (str or None): Table title; defaults to the quantity ("Speed" or "Density")
+
+    Returns:
+        pd.DataFrame: One row per method with the train error and the mean and standard deviation of
+        the test error over the test days for `metric`. In the figure, the lowest mean test error of
+        each metric is bold.
+    """
+    methods = list(results["method"].unique())
+    num_test_days = results.loc[results["split"] == "test", "day"].nunique()
+    if quantity not in CROSS_DAY_QUANTITIES:
+        raise ValueError(f"quantity must be one of {sorted(CROSS_DAY_QUANTITIES)}, got {quantity!r}")
+    summaries = {m: _cross_day_summary(results, quantity, m) for m in ("mape", "rmse")}
+
+    cell_text = [[] for _ in methods]
+    col_labels = []
+    for m, summary in summaries.items():
+        train_col, test_col, std_col = summary.columns
+        col_labels += [train_col, f"{test_col}\nmean \u00b1 std ({num_test_days} days)"]
+        for r, (_, row) in enumerate(summary.iterrows()):
+            cell_text[r] += [f"{row[train_col]:.{decimals}f}",
+                             f"{row[test_col]:.{decimals}f} \u00b1 {row[std_col]:.{decimals}f}"]
+
+    fig, ax = plt.subplots(figsize=(10.5, 0.35 * (len(methods) + 2)))
+    ax.axis("off")
+    table = ax.table(cellText=cell_text, rowLabels=methods, colLabels=col_labels, cellLoc="center",
+                     rowLoc="left", loc="center")
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1, 1.6)
+    # Bold the best (lowest mean) test error of each metric: test columns are 1 (MAPE) and 3 (RMSE)
+    best = {2 * j + 1: int(np.argmin(summary.iloc[:, 1].to_numpy())) for j, summary in enumerate(summaries.values())}
+    for (r, c), cell in table.get_celld().items():
+        cell.set_edgecolor("#d0cfca")
+        cell.set_linewidth(0.6)
+        if r == 0:   # header row
+            cell.set_text_props(fontweight="bold")
+            cell.set_facecolor("#f0efec")
+            cell.set_height(cell.get_height() * 1.5)
+        elif best.get(c) == r - 1:
+            cell.set_text_props(fontweight="bold")
+    ax.set_title(CROSS_DAY_QUANTITIES[quantity][0] if title is None else title, fontsize=11, fontweight="bold")
+    fig.tight_layout()
+
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    fig.savefig(save_path, bbox_inches="tight")
+    plt.show()
+    return summaries[metric]
+
+
 def plot_time_space_grid(
     data,
     labels,

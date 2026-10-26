@@ -1,0 +1,499 @@
+{
+  "scenario": {
+    "data_dir": "/Users/shreyaar/Desktop/PhD/research/dyn-traffic-macrosim.nosync/data/i24/i24_11_30",
+    "start_step": 0,
+    "window_minutes": 60,
+    "action_minutes": 5,
+    "decision_horizon": 12,
+    "max_density": 190.0,
+    "max_velocity": 250.0,
+    "min_density": 0.0,
+    "min_velocity": 0.0,
+    "inflow_sigma": 62.32397479223228
+  },
+  "action_models": {
+    "vsl": {
+      "note": "Synthetic proof-of-concept assumptions pending domain review.",
+      "actions": [
+        {
+          "label": "unrestricted",
+          "speed_kmh": 1000.0,
+          "speed_mph": null,
+          "probability": 0.4999999999999999,
+          "intervention_cost": 0.0
+        },
+        {
+          "label": "75 mph",
+          "speed_kmh": 120.70080000000002,
+          "speed_mph": 75.0,
+          "probability": 0.2004052197806022,
+          "intervention_cost": 1.0
+        },
+        {
+          "label": "70 mph",
+          "speed_kmh": 112.65408000000001,
+          "speed_mph": 70.0,
+          "probability": 0.12155191016338393,
+          "intervention_cost": 6.0
+        },
+        {
+          "label": "65 mph",
+          "speed_kmh": 104.60736,
+          "speed_mph": 65.0,
+          "probability": 0.07372496026072801,
+          "intervention_cost": 11.0
+        },
+        {
+          "label": "60 mph",
+          "speed_kmh": 96.56064,
+          "speed_mph": 60.0,
+          "probability": 0.04471644878422704,
+          "intervention_cost": 16.0
+        },
+        {
+          "label": "55 mph",
+          "speed_kmh": 88.51392000000001,
+          "speed_mph": 55.00000000000001,
+          "probability": 0.027121897181103416,
+          "intervention_cost": 21.0
+        },
+        {
+          "label": "50 mph",
+          "speed_kmh": 80.4672,
+          "speed_mph": 50.0,
+          "probability": 0.016450262189912867,
+          "intervention_cost": 26.0
+        },
+        {
+          "label": "45 mph",
+          "speed_kmh": 72.42048,
+          "speed_mph": 44.99999999999999,
+          "probability": 0.009977588378493642,
+          "intervention_cost": 31.0
+        },
+        {
+          "label": "40 mph",
+          "speed_kmh": 64.37376,
+          "speed_mph": 40.0,
+          "probability": 0.006051713261548851,
+          "intervention_cost": 36.0
+        }
+      ]
+    },
+    "gaussian_inflow": {
+      "sigma": 62.32397479223228,
+      "actions": [
+        {
+          "label": "-3 sigma",
+          "z": -3.0,
+          "probability": 0.004433048175243745
+        },
+        {
+          "label": "-2 sigma",
+          "z": -2.0,
+          "probability": 0.054005582622414484
+        },
+        {
+          "label": "-1 sigma",
+          "z": -1.0,
+          "probability": 0.2420362293761143
+        },
+        {
+          "label": "+0 sigma",
+          "z": 0.0,
+          "probability": 0.3990502796524549
+        },
+        {
+          "label": "+1 sigma",
+          "z": 1.0,
+          "probability": 0.2420362293761143
+        },
+        {
+          "label": "+2 sigma",
+          "z": 2.0,
+          "probability": 0.054005582622414484
+        },
+        {
+          "label": "+3 sigma",
+          "z": 3.0,
+          "probability": 0.004433048175243745
+        }
+      ]
+    }
+  },
+  "calibrations": {
+    "static:fixed_ramping": {
+      "label": "Static calibration (fixed_ramping)",
+      "type": "static",
+      "short_label": "fixed_ramping",
+      "calibration_dir": "/Users/shreyaar/Desktop/PhD/research/dyn-traffic-macrosim.nosync/calibration/i24/i24_11_30/calibration_static/fixed_ramping",
+      "step_seconds": 10.0,
+      "nominal": {
+        "failed": false,
+        "actions": [
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal"
+        ],
+        "simulated_steps": 360,
+        "time_to_failure_minutes": null,
+        "log_likelihood": 0.0,
+        "negative_log_likelihood": -0.0,
+        "intervention_cost": 0.0,
+        "closest_nonfailure_distance": 4.000000338919563e-06,
+        "closest_nonfailure_subtype": "negative_raw_velocity",
+        "closest_nonfailure_time_index": 13,
+        "closest_nonfailure_segment": 9,
+        "closest_nonfailure_raw_value": 0.0010000000847298907,
+        "closest_nonfailure_reported_value": 0.0010000000847298907,
+        "closest_nonfailure_threshold": 0.0,
+        "closest_nonfailure_signed_margin": -4.000000338919563e-06,
+        "failure_subtype": null,
+        "failure_time_index": null,
+        "failure_segment": null,
+        "failure_raw_value": null,
+        "failure_reported_value": null,
+        "failure_threshold": null,
+        "failure_signed_margin": null
+      },
+      "searches": {
+        "vsl-ast": {
+          "objective": "standard_ast",
+          "iterations": 2000,
+          "found_failure": true,
+          "best_episode": {
+            "failed": true,
+            "actions": [
+              "70 mph"
+            ],
+            "simulated_steps": 13,
+            "time_to_failure_minutes": 2.166666666666667,
+            "log_likelihood": -2.1074138633012476,
+            "negative_log_likelihood": 2.1074138633012476,
+            "intervention_cost": 6.0,
+            "closest_nonfailure_distance": 4.000001889110649e-06,
+            "closest_nonfailure_subtype": "negative_raw_velocity",
+            "closest_nonfailure_time_index": 6,
+            "closest_nonfailure_segment": 9,
+            "closest_nonfailure_raw_value": 0.0010000004722776623,
+            "closest_nonfailure_reported_value": 0.0010000004722776623,
+            "closest_nonfailure_threshold": 0.0,
+            "closest_nonfailure_signed_margin": -4.000001889110649e-06,
+            "failure_subtype": "negative_raw_velocity",
+            "failure_time_index": 13,
+            "failure_segment": 9,
+            "failure_raw_value": -0.05835495776948818,
+            "failure_reported_value": 0.0001,
+            "failure_threshold": 0.0,
+            "failure_signed_margin": 0.00023341983107795272
+          },
+          "root_action_statistics": [
+            {
+              "action": "70 mph",
+              "visits": 1922,
+              "mean_reward": 997.8925861367022
+            },
+            {
+              "action": "65 mph",
+              "visits": 44,
+              "mean_reward": 997.3925861366978
+            },
+            {
+              "action": "60 mph",
+              "visits": 13,
+              "mean_reward": 996.8925861366987
+            },
+            {
+              "action": "55 mph",
+              "visits": 7,
+              "mean_reward": 996.3925861366987
+            },
+            {
+              "action": "unrestricted",
+              "visits": 4,
+              "mean_reward": 742.9272043219892
+            },
+            {
+              "action": "50 mph",
+              "visits": 4,
+              "mean_reward": 995.8925861366987
+            },
+            {
+              "action": "45 mph",
+              "visits": 3,
+              "mean_reward": 995.3925861366987
+            },
+            {
+              "action": "40 mph",
+              "visits": 2,
+              "mean_reward": 994.8925861366987
+            },
+            {
+              "action": "75 mph",
+              "visits": 1,
+              "mean_reward": 990.5188753267366
+            }
+          ]
+        }
+      }
+    },
+    "static:fixed_ramping_T=5": {
+      "label": "Static calibration (fixed_ramping_T=5), T=5 s",
+      "type": "static",
+      "short_label": "fixed_ramping_T=5 (T=5 s)",
+      "calibration_dir": "/Users/shreyaar/Desktop/PhD/research/dyn-traffic-macrosim.nosync/calibration/i24/i24_11_30/calibration_static/fixed_ramping_T=5",
+      "step_seconds": 5.0,
+      "nominal": {
+        "failed": false,
+        "actions": [
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal"
+        ],
+        "simulated_steps": 720,
+        "time_to_failure_minutes": null,
+        "log_likelihood": 0.0,
+        "negative_log_likelihood": -0.0,
+        "intervention_cost": 0.0,
+        "closest_nonfailure_distance": 4.000000512419888e-06,
+        "closest_nonfailure_subtype": "negative_raw_velocity",
+        "closest_nonfailure_time_index": 26,
+        "closest_nonfailure_segment": 12,
+        "closest_nonfailure_raw_value": 0.001000000128104972,
+        "closest_nonfailure_reported_value": 0.001000000128104972,
+        "closest_nonfailure_threshold": 0.0,
+        "closest_nonfailure_signed_margin": -4.000000512419888e-06,
+        "failure_subtype": null,
+        "failure_time_index": null,
+        "failure_segment": null,
+        "failure_raw_value": null,
+        "failure_reported_value": null,
+        "failure_threshold": null,
+        "failure_signed_margin": null
+      },
+      "searches": {
+        "vsl-ast": {
+          "objective": "standard_ast",
+          "iterations": 2000,
+          "found_failure": true,
+          "best_episode": {
+            "failed": true,
+            "actions": [
+              "75 mph"
+            ],
+            "simulated_steps": 11,
+            "time_to_failure_minutes": 0.9166666666666667,
+            "log_likelihood": -1.6074138633012474,
+            "negative_log_likelihood": 1.6074138633012474,
+            "intervention_cost": 1.0,
+            "closest_nonfailure_distance": 0.0041993390203858855,
+            "closest_nonfailure_subtype": "negative_raw_velocity",
+            "closest_nonfailure_time_index": 10,
+            "closest_nonfailure_segment": 9,
+            "closest_nonfailure_raw_value": 1.0498347550964713,
+            "closest_nonfailure_reported_value": 1.0498347550964713,
+            "closest_nonfailure_threshold": 0.0,
+            "closest_nonfailure_signed_margin": -0.0041993390203858855,
+            "failure_subtype": "negative_raw_velocity",
+            "failure_time_index": 11,
+            "failure_segment": 9,
+            "failure_raw_value": -0.002796277920087853,
+            "failure_reported_value": 0.0001,
+            "failure_threshold": 0.0,
+            "failure_signed_margin": 1.1185111680351411e-05
+          },
+          "root_action_statistics": [
+            {
+              "action": "75 mph",
+              "visits": 1922,
+              "mean_reward": 998.3925861367022
+            },
+            {
+              "action": "70 mph",
+              "visits": 44,
+              "mean_reward": 997.8925861366978
+            },
+            {
+              "action": "65 mph",
+              "visits": 13,
+              "mean_reward": 997.3925861366987
+            },
+            {
+              "action": "60 mph",
+              "visits": 7,
+              "mean_reward": 996.8925861366987
+            },
+            {
+              "action": "55 mph",
+              "visits": 4,
+              "mean_reward": 996.3925861366987
+            },
+            {
+              "action": "unrestricted",
+              "visits": 3,
+              "mean_reward": 996.0327722894722
+            },
+            {
+              "action": "50 mph",
+              "visits": 3,
+              "mean_reward": 995.8925861366987
+            },
+            {
+              "action": "40 mph",
+              "visits": 2,
+              "mean_reward": 994.8925861366987
+            },
+            {
+              "action": "45 mph",
+              "visits": 2,
+              "mean_reward": 995.3925861366987
+            }
+          ]
+        }
+      }
+    },
+    "dynamic": {
+      "label": "Frozen dynamic calibration (h=90, 15 min)",
+      "type": "frozen_dynamic_schedule",
+      "step_seconds": 10.0,
+      "calibration_dir": "/Users/shreyaar/Desktop/PhD/research/dyn-traffic-macrosim.nosync/calibration/i24/i24_11_30/calibration_dynamic_smooth",
+      "control_horizon_steps": 90,
+      "parameter_update_minutes": 15.0,
+      "nominal": {
+        "failed": false,
+        "actions": [
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal"
+        ],
+        "simulated_steps": 360,
+        "time_to_failure_minutes": null,
+        "log_likelihood": 0.0,
+        "negative_log_likelihood": -0.0,
+        "intervention_cost": 0.0,
+        "closest_nonfailure_distance": 4.0000030203799495e-06,
+        "closest_nonfailure_subtype": "negative_raw_velocity",
+        "closest_nonfailure_time_index": 16,
+        "closest_nonfailure_segment": 8,
+        "closest_nonfailure_raw_value": 0.0010000007550949874,
+        "closest_nonfailure_reported_value": 0.0010000007550949874,
+        "closest_nonfailure_threshold": 0.0,
+        "closest_nonfailure_signed_margin": -4.0000030203799495e-06,
+        "failure_subtype": null,
+        "failure_time_index": null,
+        "failure_segment": null,
+        "failure_raw_value": null,
+        "failure_reported_value": null,
+        "failure_threshold": null,
+        "failure_signed_margin": null
+      },
+      "searches": {
+        "vsl-ast": {
+          "objective": "standard_ast",
+          "iterations": 2000,
+          "found_failure": true,
+          "best_episode": {
+            "failed": true,
+            "actions": [
+              "75 mph"
+            ],
+            "simulated_steps": 13,
+            "time_to_failure_minutes": 2.166666666666667,
+            "log_likelihood": -1.6074138633012474,
+            "negative_log_likelihood": 1.6074138633012474,
+            "intervention_cost": 1.0,
+            "closest_nonfailure_distance": 0.005969381796503356,
+            "closest_nonfailure_subtype": "negative_raw_velocity",
+            "closest_nonfailure_time_index": 10,
+            "closest_nonfailure_segment": 8,
+            "closest_nonfailure_raw_value": 1.492345449125839,
+            "closest_nonfailure_reported_value": 1.492345449125839,
+            "closest_nonfailure_threshold": 0.0,
+            "closest_nonfailure_signed_margin": -0.005969381796503356,
+            "failure_subtype": "negative_raw_velocity",
+            "failure_time_index": 13,
+            "failure_segment": 9,
+            "failure_raw_value": -0.1938924151139716,
+            "failure_reported_value": 0.0001,
+            "failure_threshold": 0.0,
+            "failure_signed_margin": 0.0007755696604558864
+          },
+          "root_action_statistics": [
+            {
+              "action": "75 mph",
+              "visits": 1924,
+              "mean_reward": 998.3925861367022
+            },
+            {
+              "action": "70 mph",
+              "visits": 44,
+              "mean_reward": 997.8925861366978
+            },
+            {
+              "action": "65 mph",
+              "visits": 13,
+              "mean_reward": 997.3925861366987
+            },
+            {
+              "action": "60 mph",
+              "visits": 7,
+              "mean_reward": 996.8925861366987
+            },
+            {
+              "action": "55 mph",
+              "visits": 4,
+              "mean_reward": 996.3925861366987
+            },
+            {
+              "action": "50 mph",
+              "visits": 3,
+              "mean_reward": 995.8925861366987
+            },
+            {
+              "action": "40 mph",
+              "visits": 2,
+              "mean_reward": 994.8925861366987
+            },
+            {
+              "action": "45 mph",
+              "visits": 2,
+              "mean_reward": 995.3925861366987
+            },
+            {
+              "action": "unrestricted",
+              "visits": 1,
+              "mean_reward": 993.5920250928375
+            }
+          ]
+        }
+      }
+    }
+  }
+}

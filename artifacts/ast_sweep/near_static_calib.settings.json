@@ -1,0 +1,56 @@
+{
+  "n_samples": 100000,
+  "seed": 0,
+  "mcts_seed": 1,
+  "sampling": "calibration",
+  "spread": 0.1,
+  "inset": 0.05,
+  "velocity_threshold": 100.0,
+  "density_threshold": 80.0,
+  "summary_only": false,
+  "workers": 10,
+  "batch_size": 200,
+  "data_dir": "/Users/shreyaar/Desktop/PhD/research/dyn-traffic-macrosim.nosync/data/i24/i24_11_30",
+  "calibration_dir": "/Users/shreyaar/Desktop/PhD/research/dyn-traffic-macrosim.nosync/calibration/i24/i24_11_30/calibration_static/fixed_ramping",
+  "start_step": 0,
+  "window_minutes": 60,
+  "action_minutes": 5,
+  "max_density": 190.0,
+  "max_velocity": 250.0,
+  "min_density": 0.0,
+  "min_velocity": -1.0,
+  "vsl_min_mph": 40.0,
+  "vsl_max_mph": 75.0,
+  "vsl_step_mph": 5.0,
+  "vsl_probability_decay_mph": 10.0,
+  "iterations": 2000,
+  "exploration_constant": 1.4142135623730951,
+  "failure_bonus": 1000.0,
+  "miss_distance_weight": 100.0,
+  "parameter_bounds": {
+    "tau_s": [
+      10.0,
+      60.0
+    ],
+    "eta_high": [
+      10.0,
+      90.0
+    ],
+    "K": [
+      5.0,
+      60.0
+    ],
+    "p_crit": [
+      15.0,
+      100.0
+    ],
+    "v_free": [
+      70.0,
+      150.0
+    ],
+    "a": [
+      0.5,
+      5.0
+    ]
+  }
+}

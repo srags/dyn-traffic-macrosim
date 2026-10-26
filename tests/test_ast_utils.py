@@ -119,6 +119,46 @@ class SimulatorDiagnosticsTests(unittest.TestCase):
         self.assertEqual(assessment.subtype, "excessive_density")
         self.assertEqual(assessment.threshold, 190.0)
 
+    def test_failure_detector_applies_configurable_lower_limits(self) -> None:
+        def assess(raw_density: float, raw_velocity: float, **limits):
+            state = TrafficState(
+                density=np.array([max(raw_density, 0.0)]),
+                velocity=np.array([max(raw_velocity, 1e-4)]),
+                flow_origin=0.0,
+                queue=0.0,
+            )
+            return assess_physical_failure(
+                state,
+                {
+                    "raw_density": np.array([raw_density]),
+                    "raw_velocity": np.array([raw_velocity]),
+                },
+                PhysicalFailureConfig(**limits),
+            )
+
+        # Default: anything below zero is unsafe, with the original name.
+        default = assess(20.0, -0.01)
+        self.assertTrue(default.failed)
+        self.assertEqual(default.subtype, "negative_raw_velocity")
+
+        # A higher minimum velocity flags slow but positive speeds.
+        slow = assess(20.0, 3.0, min_velocity=5.0)
+        self.assertTrue(slow.failed)
+        self.assertEqual(slow.subtype, "low_raw_velocity")
+        self.assertEqual(slow.threshold, 5.0)
+        self.assertFalse(assess(20.0, 6.0, min_velocity=5.0).failed)
+
+        # A negative minimum tolerates small undershoots.
+        self.assertFalse(assess(20.0, -0.5, min_velocity=-1.0).failed)
+
+        # Density minimum works the same way.
+        sparse = assess(1.0, 50.0, min_density=2.0)
+        self.assertTrue(sparse.failed)
+        self.assertEqual(sparse.subtype, "low_raw_density")
+
+        with self.assertRaises(ValueError):
+            PhysicalFailureConfig(min_velocity=300.0)
+
 
 class ASTSearchTests(unittest.TestCase):
     def test_proof_of_concept_vsl_model_uses_five_mph_steps(self) -> None:
@@ -189,6 +229,42 @@ class ASTSearchTests(unittest.TestCase):
         self.assertEqual(
             result.best_failure.failure.subtype, "negative_raw_velocity"
         )
+
+    def test_run_can_continue_past_first_failure(self) -> None:
+        environment = ASTEnvironment(
+            T=10 / 3600,
+            l=0.4,
+            initial_state=TrafficState(
+                density=np.array([1.0]),
+                velocity=np.array([100.0]),
+                flow_origin=100.0,
+                queue=0.0,
+            ),
+            nominal_demand=np.full(3, 100.0),
+            downstream_density=np.full(3, 1.0),
+            params=simple_params(tau=1 / 3600),
+            lanes={0: 1},
+            action_interval_steps=1,
+        )
+        model = VSLActionModel(
+            actions=(VSLAction("unrestricted", 1000.0), VSLAction("60", 60.0)),
+            probabilities=(0.9, 0.1),
+            costs=(0.0, 1.0),
+        )
+        actions = [model.actions[1], model.actions[0], model.actions[0]]
+
+        stopped = environment.run(actions, model)
+        continued = environment.run(actions, model, stop_on_failure=False)
+
+        # Both report the same first failure, one step (10 s) in.
+        for episode in (stopped, continued):
+            self.assertTrue(episode.failed)
+            self.assertEqual(episode.failure.time_index, 1)
+            self.assertAlmostEqual(episode.time_to_failure_minutes, 10 / 60)
+        # Only the continued run simulates the whole horizon.
+        self.assertEqual(stopped.velocity_history.shape[0], 2)
+        self.assertEqual(continued.velocity_history.shape[0], 4)
+        self.assertEqual(continued.simulated_steps, 3)
 
 
 if __name__ == "__main__":

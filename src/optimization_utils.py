@@ -390,7 +390,7 @@ def metanet_param_fit(
                         model.beta[i].value = params["beta"][i]
                         model.r_inflow[t, i].value = params["r"][t, i]
         else:
-            model.beta = Var(model.i, bounds=(1e-3, 0.9), initialize=1e-3)
+            model.beta = Var(model.i, bounds=(1e-3, 0.5), initialize=1e-3)
             model.r_inflow = Var(model.i, bounds=(1e-3, 2000), initialize=1e-3)
             
             if ramp_mapping is not None:

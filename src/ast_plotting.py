@@ -25,6 +25,44 @@ CALIBRATION_COLORS = {
     "static": "#5B55A5",
     "dynamic": "#168A8A",
 }
+# Fixed-order categorical palette for any other calibration keys (assigned by
+# position in the results, so a calibration keeps its color across figures).
+EXTRA_CALIBRATION_COLORS = (
+    "#2a78d6",
+    "#eb6834",
+    "#1baf7a",
+    "#eda100",
+    "#e87ba4",
+    "#008300",
+    "#6250d6",
+)
+
+
+def _calibration_colors(
+    calibrations: Sequence[Tuple[str, Mapping[str, Any]]],
+) -> dict:
+    colors = {}
+    extra = 0
+    for key, _batch in calibrations:
+        if key in CALIBRATION_COLORS:
+            colors[key] = CALIBRATION_COLORS[key]
+        else:
+            colors[key] = EXTRA_CALIBRATION_COLORS[extra % len(EXTRA_CALIBRATION_COLORS)]
+            extra += 1
+    return colors
+
+
+def _comparison_title(calibrations: Sequence[Tuple[str, Mapping[str, Any]]]) -> str:
+    keys = [key for key, _batch in calibrations]
+    if keys == ["static", "dynamic"]:
+        return "static vs frozen dynamic"
+    if len(keys) == 1:
+        return _short_calibration_label(*calibrations[0])
+    return "across calibrations"
+
+
+def _bar_height(count: int) -> float:
+    return 0.27 if count <= 2 else 0.8 / count * 0.8
 
 
 def _calibrations(
@@ -65,6 +103,8 @@ def _available_modes(calibrations: Sequence[Tuple[str, Mapping[str, Any]]]) -> L
 
 
 def _short_calibration_label(key: str, batch: Mapping[str, Any]) -> str:
+    if batch.get("short_label"):
+        return str(batch["short_label"])
     if key == "static":
         return "Static"
     if key == "dynamic":
@@ -78,7 +118,7 @@ def _row_offsets(count: int) -> List[float]:
 
     if count == 1:
         return [0.0]
-    spacing = 0.34
+    spacing = 0.34 if count <= 2 else 0.8 / count
     midpoint = (count - 1) / 2.0
     return [(index - midpoint) * spacing for index in range(count)]
 
@@ -120,11 +160,13 @@ def plot_time_to_first_invalid_state(results: Mapping[str, Any]) -> Figure:
     modes = _available_modes(calibrations)
     rows = list(range(len(modes)))
     offsets = _row_offsets(len(calibrations))
+    colors = _calibration_colors(calibrations)
+    bar_height = _bar_height(len(calibrations))
 
     figure, axis = plt.subplots(figsize=(11.5, 6.0), constrained_layout=True)
     for (key, batch), offset in zip(calibrations, offsets):
         episodes = dict(_episodes(batch))
-        color = CALIBRATION_COLORS.get(key, "#777777")
+        color = colors[key]
         calibration_label = _short_calibration_label(key, batch)
         for row, mode in enumerate(modes):
             if mode not in episodes:
@@ -141,7 +183,7 @@ def plot_time_to_first_invalid_state(results: Mapping[str, Any]) -> Figure:
                 duration,
                 color=color,
                 alpha=0.82,
-                height=0.27,
+                height=bar_height,
                 label=calibration_label if row == 0 else None,
             )
             if episode.get("failed"):
@@ -183,7 +225,7 @@ def plot_time_to_first_invalid_state(results: Mapping[str, Any]) -> Figure:
     axis.set_xlim(0.0, horizon * 1.04)
     axis.set_xlabel("Simulated time (minutes)")
     axis.set_title(
-        "Time to first invalid state: static vs frozen dynamic",
+        f"Time to first invalid state: {_comparison_title(calibrations)}",
         loc="left",
         fontsize=17,
         fontweight="bold",
@@ -219,26 +261,33 @@ def plot_boundary_severity(results: Mapping[str, Any]) -> Figure:
 
     rows = list(range(len(modes)))
     offsets = _row_offsets(len(calibrations))
+    colors = _calibration_colors(calibrations)
+    bar_height = _bar_height(len(calibrations))
     figure, axis = plt.subplots(figsize=(11.5, 6.0), constrained_layout=True)
+    boundary = float(results.get("scenario", {}).get("min_velocity", 0.0))
     axis.axvline(
-        0.0, color="#8B1E1E", linewidth=1.7, label="failure boundary", zorder=1
+        boundary,
+        color="#8B1E1E",
+        linewidth=1.7,
+        label=f"failure boundary ({boundary:g} km/h)",
+        zorder=1,
     )
     for (key, batch), offset in zip(calibrations, offsets):
         episodes = dict(_episodes(batch))
-        color = CALIBRATION_COLORS.get(key, "#777777")
+        color = colors[key]
         calibration_label = _short_calibration_label(key, batch)
         for row, mode in enumerate(modes):
             if mode not in episodes:
                 continue
             value, _subtype = _critical_raw_value(episodes[mode])
             y_position = row + offset
-            place_label_left = value > -0.4
+            place_label_left = value > boundary - 0.4
             axis.barh(
                 y_position,
                 value,
                 color=color,
                 alpha=0.82,
-                height=0.27,
+                height=bar_height,
                 zorder=2,
                 label=calibration_label if row == 0 else None,
             )
@@ -257,7 +306,7 @@ def plot_boundary_severity(results: Mapping[str, Any]) -> Figure:
     axis.invert_yaxis()
     axis.set_xlabel("Raw velocity at critical point before clipping (km/h)")
     axis.set_title(
-        "Boundary severity before clipping: static vs frozen dynamic",
+        f"Boundary severity before clipping: {_comparison_title(calibrations)}",
         loc="left",
         fontsize=17,
         fontweight="bold",
@@ -277,7 +326,11 @@ def plot_discovered_sequences(results: Mapping[str, Any]) -> Figure:
     for key, batch in calibrations:
         calibration_label = _short_calibration_label(key, batch)
         for mode, episode in _episodes(batch):
-            if mode == "nominal":
+            if mode == "nominal" and episode.get("failed"):
+                sequence = "none"
+                metric = f"failed {scenario['window_minutes']}-min gate"
+                outcome = f"{episode['time_to_failure_minutes']:.2f} min"
+            elif mode == "nominal":
                 sequence = "none"
                 metric = f"passed {scenario['window_minutes']}-min gate"
                 outcome = "No failure"

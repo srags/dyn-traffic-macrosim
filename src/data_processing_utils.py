@@ -6,7 +6,66 @@ import matplotlib.pyplot as plt
 import os
 import ijson
 import seaborn as sns
+from simulation_utils import run_metanet_sim
+from param_loader import METANET_Params
 
+def generate_synthetic_bottleneck(sim_time=2.0, time_step=10/3600, peak_demand=5500, peak_start=0.055, peak_duration=0.5, standard_demand=4000, save_dir=None):
+    SEG_LENGTH = 0.4                                  # km
+    TOTAL_DISTANCE = 10.0                             # km
+    NUM_SEGMENTS = int(TOTAL_DISTANCE / SEG_LENGTH)
+    LANES = {i: 4 if i < NUM_SEGMENTS - 5 else 2 for i in range(NUM_SEGMENTS)}
+
+    def generate_demand(sim_time, time_step, peak_demand, peak_start, peak_duration, standard_demand):
+        """Rectangular peak on a constant base."""
+        total_time_steps = int(sim_time / time_step)
+        peak_end = peak_start + peak_duration
+        demand = np.empty(total_time_steps + 1)
+        for i in range(total_time_steps + 1):
+            if int(peak_start / time_step) <= i < int(peak_end / time_step):
+                demand[i] = peak_demand
+            else:
+                demand[i] = standard_demand
+        return demand
+
+
+    def get_num_veh(demand, time_step):
+        """Vehicles served over the (unpadded) demand profile."""
+        return float(np.sum(demand)) * time_step
+
+
+    def free_flow_tts(demand, v_free, time_step):
+        """Free-flow TTS over the unpadded demand profile -- the convention that
+        reproduces the delay figures reported for this case study.
+
+        Note: the original driver computed this from the demand profile *after* it
+        was padded out to the MPC horizon, which inflates T_FF and raises every CC
+        value by roughly three percentage points. We use the unpadded profile so
+        that the free-flow reference spans the same two hours as the simulation.
+        """
+        return get_num_veh(demand, time_step) * (TOTAL_DISTANCE / v_free)
+    
+    time_steps = int(sim_time / time_step)  
+    demand = generate_demand(sim_time, time_step, peak_demand, peak_start, peak_duration, standard_demand)
+    start_state = (np.full(NUM_SEGMENTS, standard_demand / (LANES[0] * 90)),
+                np.full(NUM_SEGMENTS, 90.0),
+                standard_demand,
+                0)
+    params = METANET_Params(path=None, num_segments=NUM_SEGMENTS).get_params()
+
+    rho, velocity, _, tts_uc = run_metanet_sim(
+        time_step, SEG_LENGTH, start_state, demand, np.zeros(time_steps),
+        params, lanes=LANES, real_data=False, vsl_speeds=None, plotting=True,
+    )
+    q = rho * velocity * np.array([LANES[i] for i in range(NUM_SEGMENTS)])  # flow in veh/h
+
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        np.save(os.path.join(save_dir, "rho_hat.npy"), rho * np.array([LANES[i] for i in range(NUM_SEGMENTS)]))  # density in veh/km
+        np.save(os.path.join(save_dir, "v_hat.npy"), velocity)
+        np.save(os.path.join(save_dir, "q_hat.npy"), q)
+        np.save(os.path.join(save_dir, "inflow.npy"), demand)
+        np.save(os.path.join(save_dir, "downstream_density.npy"), np.zeros(time_steps))
+        np.save(os.path.join(save_dir, "lane_mapping.npy"), np.array([LANES[i] for i in range(NUM_SEGMENTS)]))
 
 def compute_speed(timestamps, x_positions, y_positions):
     """
@@ -412,3 +471,6 @@ def plot_matrices(
     # Adjust layout and show the plots
     plt.tight_layout()
     plt.show()
+
+if __name__ == "__main__":
+    generate_synthetic_bottleneck(save_dir="data/synthetic")

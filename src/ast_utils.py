@@ -43,10 +43,26 @@ class TrafficState:
 
 @dataclass(frozen=True)
 class PhysicalFailureConfig:
-    """Hard limits for the first physical/numerical failure definition."""
+    """Hard limits for the first physical/numerical failure definition.
+
+    A state is unsafe when a raw (pre-clipping) density or velocity update falls
+    below its minimum, or a reported value rises above its maximum. Minimums of
+    zero give the original "negative value" check. A positive minimum makes the
+    check stricter; a negative one tolerates small undershoots.
+    """
 
     max_density: float = 190.0  # veh/km/lane
     max_velocity: float = 250.0  # km/h
+    min_density: float = 0.0  # veh/km/lane
+    min_velocity: float = 0.0  # km/h
+
+    def __post_init__(self) -> None:
+        if self.max_density <= 0 or self.max_velocity <= 0:
+            raise ValueError("Maximum density and velocity must be positive.")
+        if self.min_density >= self.max_density:
+            raise ValueError("min_density must be below max_density.")
+        if self.min_velocity >= self.max_velocity:
+            raise ValueError("min_velocity must be below max_velocity.")
 
 
 @dataclass(frozen=True)
@@ -81,10 +97,19 @@ def assess_physical_failure(
 ) -> FailureAssessment:
     """Check raw and reported values for physical/numerical invalidity.
 
-    Negative raw updates matter even though the normal simulator clips them.
-    Upper limits are checked on the reported next state. All finite constraints
-    are normalized so a single distance-to-failure can guide MCTS rollouts.
+    Lower limits are checked on raw updates, which matter even though the
+    normal simulator clips them. Upper limits are checked on the reported next
+    state. All finite constraints are normalized (by the maximum values) so a
+    single distance-to-failure can guide MCTS rollouts.
     """
+
+    # Keep the original subtype names for the default zero minimums.
+    low_density_subtype = (
+        "negative_raw_density" if config.min_density == 0 else "low_raw_density"
+    )
+    low_velocity_subtype = (
+        "negative_raw_velocity" if config.min_velocity == 0 else "low_raw_velocity"
+    )
 
     raw_density = np.asarray(diagnostics["raw_density"], dtype=float)
     raw_velocity = np.asarray(diagnostics["raw_velocity"], dtype=float)
@@ -121,20 +146,20 @@ def assess_physical_failure(
         candidates.extend(
             [
                 (
-                    -raw_density[segment] / config.max_density,
-                    "negative_raw_density",
+                    (config.min_density - raw_density[segment]) / config.max_density,
+                    low_density_subtype,
                     segment,
                     float(raw_density[segment]),
                     float(density[segment]),
-                    0.0,
+                    config.min_density,
                 ),
                 (
-                    -raw_velocity[segment] / config.max_velocity,
-                    "negative_raw_velocity",
+                    (config.min_velocity - raw_velocity[segment]) / config.max_velocity,
+                    low_velocity_subtype,
                     segment,
                     float(raw_velocity[segment]),
                     float(velocity[segment]),
-                    0.0,
+                    config.min_velocity,
                 ),
                 (
                     density[segment] / config.max_density - 1.0,
@@ -451,7 +476,9 @@ class EpisodeResult:
     def time_to_failure_minutes(self) -> Optional[float]:
         if not self.failed:
             return None
-        return self.simulated_steps * self.time_step_hours * 60.0
+        # failure.time_index is the step at which failure occurred. It equals
+        # simulated_steps unless the run continued past the failure.
+        return self.failure.time_index * self.time_step_hours * 60.0
 
     @property
     def closest_nonfailure_distance(self) -> Optional[float]:
@@ -539,8 +566,18 @@ class ASTEnvironment:
     def decision_horizon(self) -> int:
         return self.num_steps // self.action_interval_steps
 
-    def run(self, actions: Sequence[Any], action_model: ActionModel) -> EpisodeResult:
-        """Run one action sequence, stopping at the first failure."""
+    def run(
+        self,
+        actions: Sequence[Any],
+        action_model: ActionModel,
+        stop_on_failure: bool = True,
+    ) -> EpisodeResult:
+        """Run one action sequence, by default stopping at the first failure.
+
+        With ``stop_on_failure=False`` the simulation continues to the end of the
+        horizon (for example, to compare the whole trajectory with data). The
+        first failure and the closest pre-failure point are still reported.
+        """
 
         if len(actions) > self.decision_horizon:
             raise ValueError("Action sequence is longer than this scenario's horizon.")
@@ -588,7 +625,7 @@ class ASTEnvironment:
             closest = initial_assessment
 
         for t in range(min(self.num_steps, len(actions) * self.action_interval_steps)):
-            if failure is not None:
+            if failure is not None and stop_on_failure:
                 break
             decision = t // self.action_interval_steps
             if decision >= activated_decisions:
@@ -631,6 +668,8 @@ class ASTEnvironment:
             raw_density_history.append(diagnostics["raw_density"].copy())
             raw_velocity_history.append(diagnostics["raw_velocity"].copy())
 
+            if failure is not None:
+                continue  # already failed; only keep simulating the trajectory
             assessment = assess_physical_failure(state, diagnostics, self.failure_config)
             if (
                 not assessment.failed
@@ -639,7 +678,8 @@ class ASTEnvironment:
                 closest = assessment
             if assessment.failed:
                 failure = assessment
-                break
+                if stop_on_failure:
+                    break
 
         if closest is None and failure is None:
             raise ValueError("At least one action interval is required to evaluate an episode.")
@@ -670,11 +710,15 @@ class ASTEnvironment:
             ),
         )
 
-    def run_nominal(self) -> EpisodeResult:
+    def run_nominal(self, stop_on_failure: bool = True) -> EpisodeResult:
         """Run the required no-disturbance safety check."""
 
         model = NominalActionModel()
-        return self.run([model.actions[0]] * self.decision_horizon, model)
+        return self.run(
+            [model.actions[0]] * self.decision_horizon,
+            model,
+            stop_on_failure=stop_on_failure,
+        )
 
 
 # ---------------------------------------------------------------------------

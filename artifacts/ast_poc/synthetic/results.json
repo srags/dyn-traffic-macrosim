@@ -1,0 +1,476 @@
+{
+  "scenario": {
+    "data_dir": "/Users/shreyaar/Desktop/PhD/research/dyn-traffic-macrosim.nosync/data/synthetic",
+    "start_step": 0,
+    "window_minutes": 120,
+    "action_minutes": 5,
+    "decision_horizon": 24,
+    "max_density": 190.0,
+    "max_velocity": 250.0,
+    "min_density": 0.0,
+    "min_velocity": 0.0,
+    "inflow_sigma": 32.47595264191645
+  },
+  "action_models": {
+    "vsl": {
+      "note": "Synthetic proof-of-concept assumptions pending domain review.",
+      "actions": [
+        {
+          "label": "unrestricted",
+          "speed_kmh": 1000.0,
+          "speed_mph": null,
+          "probability": 0.4999999999999999,
+          "intervention_cost": 0.0
+        },
+        {
+          "label": "75 mph",
+          "speed_kmh": 120.70080000000002,
+          "speed_mph": 75.0,
+          "probability": 0.2004052197806022,
+          "intervention_cost": 1.0
+        },
+        {
+          "label": "70 mph",
+          "speed_kmh": 112.65408000000001,
+          "speed_mph": 70.0,
+          "probability": 0.12155191016338393,
+          "intervention_cost": 6.0
+        },
+        {
+          "label": "65 mph",
+          "speed_kmh": 104.60736,
+          "speed_mph": 65.0,
+          "probability": 0.07372496026072801,
+          "intervention_cost": 11.0
+        },
+        {
+          "label": "60 mph",
+          "speed_kmh": 96.56064,
+          "speed_mph": 60.0,
+          "probability": 0.04471644878422704,
+          "intervention_cost": 16.0
+        },
+        {
+          "label": "55 mph",
+          "speed_kmh": 88.51392000000001,
+          "speed_mph": 55.00000000000001,
+          "probability": 0.027121897181103416,
+          "intervention_cost": 21.0
+        },
+        {
+          "label": "50 mph",
+          "speed_kmh": 80.4672,
+          "speed_mph": 50.0,
+          "probability": 0.016450262189912867,
+          "intervention_cost": 26.0
+        },
+        {
+          "label": "45 mph",
+          "speed_kmh": 72.42048,
+          "speed_mph": 44.99999999999999,
+          "probability": 0.009977588378493642,
+          "intervention_cost": 31.0
+        },
+        {
+          "label": "40 mph",
+          "speed_kmh": 64.37376,
+          "speed_mph": 40.0,
+          "probability": 0.006051713261548851,
+          "intervention_cost": 36.0
+        }
+      ]
+    },
+    "gaussian_inflow": {
+      "sigma": 32.47595264191645,
+      "actions": [
+        {
+          "label": "-3 sigma",
+          "z": -3.0,
+          "probability": 0.004433048175243745
+        },
+        {
+          "label": "-2 sigma",
+          "z": -2.0,
+          "probability": 0.054005582622414484
+        },
+        {
+          "label": "-1 sigma",
+          "z": -1.0,
+          "probability": 0.2420362293761143
+        },
+        {
+          "label": "+0 sigma",
+          "z": 0.0,
+          "probability": 0.3990502796524549
+        },
+        {
+          "label": "+1 sigma",
+          "z": 1.0,
+          "probability": 0.2420362293761143
+        },
+        {
+          "label": "+2 sigma",
+          "z": 2.0,
+          "probability": 0.054005582622414484
+        },
+        {
+          "label": "+3 sigma",
+          "z": 3.0,
+          "probability": 0.004433048175243745
+        }
+      ]
+    }
+  },
+  "calibrations": {
+    "synthetic": {
+      "label": "Synthetic data, default parameters",
+      "type": "synthetic",
+      "short_label": "Synthetic (default params)",
+      "step_seconds": 10.0,
+      "nominal": {
+        "failed": false,
+        "actions": [
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal",
+          "nominal"
+        ],
+        "simulated_steps": 720,
+        "time_to_failure_minutes": null,
+        "log_likelihood": 0.0,
+        "negative_log_likelihood": -0.0,
+        "intervention_cost": 0.0,
+        "closest_nonfailure_distance": 0.0446946381310823,
+        "closest_nonfailure_subtype": "negative_raw_velocity",
+        "closest_nonfailure_time_index": 211,
+        "closest_nonfailure_segment": 18,
+        "closest_nonfailure_raw_value": 11.173659532770575,
+        "closest_nonfailure_reported_value": 11.173659532770575,
+        "closest_nonfailure_threshold": 0.0,
+        "closest_nonfailure_signed_margin": -0.0446946381310823,
+        "failure_subtype": null,
+        "failure_time_index": null,
+        "failure_segment": null,
+        "failure_raw_value": null,
+        "failure_reported_value": null,
+        "failure_threshold": null,
+        "failure_signed_margin": null
+      },
+      "searches": {
+        "vsl-ast": {
+          "objective": "standard_ast",
+          "iterations": 100,
+          "found_failure": false,
+          "best_episode": {
+            "failed": false,
+            "actions": [
+              "unrestricted",
+              "50 mph",
+              "45 mph",
+              "unrestricted",
+              "unrestricted",
+              "unrestricted",
+              "unrestricted",
+              "75 mph",
+              "unrestricted",
+              "60 mph",
+              "65 mph",
+              "unrestricted",
+              "unrestricted",
+              "70 mph",
+              "unrestricted",
+              "unrestricted",
+              "75 mph",
+              "40 mph",
+              "unrestricted",
+              "unrestricted",
+              "75 mph",
+              "75 mph",
+              "unrestricted",
+              "75 mph"
+            ],
+            "simulated_steps": 720,
+            "time_to_failure_minutes": null,
+            "log_likelihood": -38.69246584359302,
+            "negative_log_likelihood": 38.69246584359302,
+            "intervention_cost": 131.0,
+            "closest_nonfailure_distance": 0.038346556790224445,
+            "closest_nonfailure_subtype": "negative_raw_velocity",
+            "closest_nonfailure_time_index": 515,
+            "closest_nonfailure_segment": 18,
+            "closest_nonfailure_raw_value": 9.586639197556112,
+            "closest_nonfailure_reported_value": 9.586639197556112,
+            "closest_nonfailure_threshold": 0.0,
+            "closest_nonfailure_signed_margin": -0.038346556790224445,
+            "failure_subtype": null,
+            "failure_time_index": null,
+            "failure_segment": null,
+            "failure_raw_value": null,
+            "failure_reported_value": null,
+            "failure_threshold": null,
+            "failure_signed_margin": null
+          },
+          "root_action_statistics": [
+            {
+              "action": "unrestricted",
+              "visits": 64,
+              "mean_reward": -40.88677745400268
+            },
+            {
+              "action": "65 mph",
+              "visits": 11,
+              "mean_reward": -42.8636236670552
+            },
+            {
+              "action": "45 mph",
+              "visits": 9,
+              "mean_reward": -43.24552238431618
+            },
+            {
+              "action": "75 mph",
+              "visits": 4,
+              "mean_reward": -43.86358549069463
+            },
+            {
+              "action": "70 mph",
+              "visits": 4,
+              "mean_reward": -43.529196790257295
+            },
+            {
+              "action": "60 mph",
+              "visits": 3,
+              "mean_reward": -44.37028290864324
+            },
+            {
+              "action": "50 mph",
+              "visits": 3,
+              "mean_reward": -43.97113866540568
+            },
+            {
+              "action": "55 mph",
+              "visits": 1,
+              "mean_reward": -47.56872598216879
+            },
+            {
+              "action": "40 mph",
+              "visits": 1,
+              "mean_reward": -45.87615713792793
+            }
+          ]
+        },
+        "vsl-min": {
+          "objective": "minimum_intervention",
+          "iterations": 100,
+          "found_failure": false,
+          "best_episode": {
+            "failed": false,
+            "actions": [
+              "75 mph",
+              "65 mph",
+              "unrestricted",
+              "65 mph",
+              "70 mph",
+              "45 mph",
+              "40 mph",
+              "65 mph",
+              "40 mph",
+              "45 mph",
+              "55 mph",
+              "70 mph",
+              "70 mph",
+              "65 mph",
+              "40 mph",
+              "75 mph",
+              "65 mph",
+              "40 mph",
+              "50 mph",
+              "45 mph",
+              "unrestricted",
+              "60 mph",
+              "50 mph",
+              "70 mph"
+            ],
+            "simulated_steps": 720,
+            "time_to_failure_minutes": null,
+            "log_likelihood": -75.24939935374734,
+            "negative_log_likelihood": 75.24939935374734,
+            "intervention_cost": 407.0,
+            "closest_nonfailure_distance": 0.035018285515203376,
+            "closest_nonfailure_subtype": "negative_raw_velocity",
+            "closest_nonfailure_time_index": 245,
+            "closest_nonfailure_segment": 17,
+            "closest_nonfailure_raw_value": 8.754571378800843,
+            "closest_nonfailure_reported_value": 8.754571378800843,
+            "closest_nonfailure_threshold": 0.0,
+            "closest_nonfailure_signed_margin": -0.035018285515203376,
+            "failure_subtype": null,
+            "failure_time_index": null,
+            "failure_segment": null,
+            "failure_raw_value": null,
+            "failure_reported_value": null,
+            "failure_threshold": null,
+            "failure_signed_margin": null
+          },
+          "root_action_statistics": [
+            {
+              "action": "75 mph",
+              "visits": 87,
+              "mean_reward": -367.95669343172796
+            },
+            {
+              "action": "45 mph",
+              "visits": 5,
+              "mean_reward": -405.75261406033843
+            },
+            {
+              "action": "40 mph",
+              "visits": 2,
+              "mean_reward": -405.92723539552605
+            },
+            {
+              "action": "60 mph",
+              "visits": 1,
+              "mean_reward": -415.0500191718747
+            },
+            {
+              "action": "50 mph",
+              "visits": 1,
+              "mean_reward": -427.0792589889361
+            },
+            {
+              "action": "70 mph",
+              "visits": 1,
+              "mean_reward": -446.3661720006585
+            },
+            {
+              "action": "unrestricted",
+              "visits": 1,
+              "mean_reward": -415.4445860166712
+            },
+            {
+              "action": "55 mph",
+              "visits": 1,
+              "mean_reward": -486.13100707210043
+            },
+            {
+              "action": "65 mph",
+              "visits": 1,
+              "mean_reward": -496.2844391734633
+            }
+          ]
+        },
+        "inflow-ast": {
+          "objective": "standard_ast",
+          "iterations": 100,
+          "found_failure": false,
+          "best_episode": {
+            "failed": false,
+            "actions": [
+              "+1 sigma",
+              "+0 sigma",
+              "+0 sigma",
+              "-3 sigma",
+              "+0 sigma",
+              "+2 sigma",
+              "+1 sigma",
+              "+0 sigma",
+              "+1 sigma",
+              "+1 sigma",
+              "+1 sigma",
+              "-1 sigma",
+              "+0 sigma",
+              "+0 sigma",
+              "+1 sigma",
+              "+0 sigma",
+              "+0 sigma",
+              "+1 sigma",
+              "-1 sigma",
+              "-2 sigma",
+              "-2 sigma",
+              "-1 sigma",
+              "-1 sigma",
+              "-2 sigma"
+            ],
+            "simulated_steps": 720,
+            "time_to_failure_minutes": null,
+            "log_likelihood": -40.048028540756135,
+            "negative_log_likelihood": 40.048028540756135,
+            "intervention_cost": 18.0,
+            "closest_nonfailure_distance": 0.044581059486357696,
+            "closest_nonfailure_subtype": "negative_raw_velocity",
+            "closest_nonfailure_time_index": 212,
+            "closest_nonfailure_segment": 18,
+            "closest_nonfailure_raw_value": 11.145264871589424,
+            "closest_nonfailure_reported_value": 11.145264871589424,
+            "closest_nonfailure_threshold": 0.0,
+            "closest_nonfailure_signed_margin": -0.044581059486357696,
+            "failure_subtype": null,
+            "failure_time_index": null,
+            "failure_segment": null,
+            "failure_raw_value": null,
+            "failure_reported_value": null,
+            "failure_threshold": null,
+            "failure_signed_margin": null
+          },
+          "root_action_statistics": [
+            {
+              "action": "+1 sigma",
+              "visits": 44,
+              "mean_reward": -40.18729141072651
+            },
+            {
+              "action": "-1 sigma",
+              "visits": 36,
+              "mean_reward": -39.907367975403496
+            },
+            {
+              "action": "+2 sigma",
+              "visits": 9,
+              "mean_reward": -41.13277264341523
+            },
+            {
+              "action": "-2 sigma",
+              "visits": 4,
+              "mean_reward": -41.26794975289269
+            },
+            {
+              "action": "+0 sigma",
+              "visits": 3,
+              "mean_reward": -41.85380383316655
+            },
+            {
+              "action": "-3 sigma",
+              "visits": 3,
+              "mean_reward": -41.68148615299597
+            },
+            {
+              "action": "+3 sigma",
+              "visits": 1,
+              "mean_reward": -43.522672967068004
+            }
+          ]
+        }
+      }
+    }
+  }
+}

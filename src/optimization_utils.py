@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from math import comb
+import pandas as pd
 from scipy.optimize import least_squares
 from eval_metrics import generate_perturbations, mape, rmse
 from pyomo.environ import (
@@ -27,13 +28,22 @@ CALIB_PARAM_NAMES = ["eta_high", "tau", "K", "rho_crit", "v_free", "a"]   # <<<
  #['eta_high', 'v_free'] 
 
 CALIB_PARAM_BOUNDS = {                                                       # <<<
-    "eta_high": (10.0,        90.0),                                         # <<<
+    "eta_high": (10.0,        60.0),                                         # <<<
     "tau":      (10.0/3600,   60.0/3600),                                    # <<<
-    "K":        (5.0,         60.0),                                         # <<<
-    "rho_crit": (15.0,        75.0),                                         # <<<
-    "v_free":   (70.0,        150.0),                                        # <<<
+    "K":        (20.0,        60.0),                                         # <<<
+    "rho_crit": (20.0,        50.0),                                         # <<<
+    "v_free":   (70.0,        135.0),                                        # <<<
     "a":        (0.5,         5.0),                                          # <<<
-}        
+}     
+
+# CALIB_PARAM_BOUNDS = {                                                       # <<<
+#     "eta_high": (10.0,        90.0),                                         # <<<
+#     "tau":      (10.0/3600,   60.0/3600),                                    # <<<
+#     "K":        (5.0,         60.0),                                         # <<<
+#     "rho_crit": (15.0,        100.0),                                         # <<<
+#     "v_free":   (70.0,        144.0),                                        # <<<
+#     "a":        (0.5,         5.0),                                          # <<<
+# }        
 # CALIB_PARAM_BOUNDS = {                                                       # <<<
 #     "eta_high": (30.0,        31.0),                                         # <<<
 #     "tau":      (15.0/3600,   16.0/3600),                                    # <<<
@@ -255,7 +265,8 @@ def metanet_param_fit(
     x0=None,
     tee=True,
     min_oscillations=False,
-    oscillation_weight=5
+    oscillation_weight=5,
+    max_dv=None,
 ):
     initial_flow_or = initial_traffic_state
     
@@ -298,12 +309,12 @@ def metanet_param_fit(
     if warmstart is not None:
         params = METANET_Params(path=warmstart, num_segments=num_calibrated_segments).get_params()
 
-        model.eta_high = Var(model.i, bounds=(10.0, 90.0))
-        model.tau = Var(model.i, bounds=(10.0 / 3600, 60.0 / 3600))
-        model.K = Var(model.i, bounds=(5.0, 60.0))
-        model.rho_crit = Var(model.i, bounds=(15, 100))
-        model.v_free = Var(model.i, bounds=(70, 150))
-        model.a = Var(model.i, bounds=(0.5, 5))
+        model.eta_high = Var(model.i, bounds=CALIB_PARAM_BOUNDS["eta_high"])
+        model.tau = Var(model.i, bounds=CALIB_PARAM_BOUNDS["tau"])
+        model.K = Var(model.i, bounds=CALIB_PARAM_BOUNDS["K"])
+        model.rho_crit = Var(model.i, bounds=CALIB_PARAM_BOUNDS["rho_crit"])
+        model.v_free = Var(model.i, bounds=CALIB_PARAM_BOUNDS["v_free"])
+        model.a = Var(model.i, bounds=CALIB_PARAM_BOUNDS["a"])
 
         for i in range(num_segments):
             model.eta_high[i].value = params["eta_high"][i]
@@ -314,22 +325,16 @@ def metanet_param_fit(
             model.a[i].value = params["a"][i]
 
     else:
-        # model.eta_high = Var(model.i, bounds=(15.0, 60.0), initialize=30.0)
-        # model.tau = Var(model.i, bounds=(15.0 / 3600, 60.0 / 3600), initialize=18 / 3600)
-        # model.K = Var(model.i, bounds=(5.0, 60.0), initialize=40.0)
-        # model.rho_crit = Var(model.i, bounds=(15, 100), initialize=37.45)
-        # model.v_free = Var(model.i, bounds=(110, 150), initialize=120.0)
-        # model.a = Var(model.i, bounds=(0.5, 5), initialize=1.4)
-        model.eta_high = Var(model.i, bounds=(10.0, 90.0), initialize=30.0)
+        model.eta_high = Var(model.i, bounds=CALIB_PARAM_BOUNDS["eta_high"], initialize=30.0)
         model.tau = Var(
-            model.i, bounds=(10.0 / 3600, 60.0 / 3600), initialize=18 / 3600
+            model.i, bounds=CALIB_PARAM_BOUNDS["tau"], initialize=18 / 3600
         )
-        model.K = Var(model.i, bounds=(5.0, 60.0), initialize=40.0)
+        model.K = Var(model.i, bounds=CALIB_PARAM_BOUNDS["K"], initialize=40.0)
         model.rho_crit = Var(
-            model.i, bounds=(15, np.max(rho_hat)), initialize=37.45
+            model.i, bounds=CALIB_PARAM_BOUNDS["rho_crit"], initialize=37.45
         )
-        model.v_free = Var(model.i, bounds=(70, 150), initialize=120.0)
-        model.a = Var(model.i, bounds=(0.5, 5), initialize=1.4)
+        model.v_free = Var(model.i, bounds=CALIB_PARAM_BOUNDS["v_free"], initialize=120.0)
+        model.a = Var(model.i, bounds=CALIB_PARAM_BOUNDS["a"], initialize=1.4)
 
         ## I-24 Bounds
         # model.eta_high = Var(model.i, bounds=(10.0, 90.0), initialize=30.0)
@@ -342,20 +347,6 @@ def metanet_param_fit(
         # )
         # model.v_free = Var(model.i, bounds=(70, 150), initialize=120.0)
         # model.a = Var(model.i, bounds=(0.5, 5), initialize=1.4)
-    # model.eta_high = Var(model.i, bounds=(1.0, 90.0), initialize=30.0)
-    # model.tau = Var(
-    #     model.i, bounds=(1.0 / 3600, 60.0 / 3600), initialize=18 / 3600
-    # )
-    # model.K = Var(model.i, bounds=(1.0, 60.0), initialize=40.0)
-    # model.rho_crit = Var(
-    #     model.i, bounds=(10, np.max(rho_hat)), initialize=37.45 #np.max(rho_hat)
-    # )
-    # model.v_free = Var(model.i, bounds=(50, 150), initialize=120.0)
-    # model.a = Var(model.i, bounds=(0.01, 10), initialize=1.4)
-
-    # if include_ramping:
-    #     model.beta = Var(model.i, bounds=(1e-3, 0.9), initialize=1e-3)
-    #     model.r_inflow = Var(model.i, bounds=(1e-3, 2000), initialize=1e-3)
 
     if include_ramping:    
         if time_varying_ramps:
@@ -438,6 +429,16 @@ def metanet_param_fit(
     for i in range(num_segments):
         model.constraints.add(model.v_pred[0, i] == v_hat[0, i].item())
         model.constraints.add(model.rho_pred[0, i] == rho_hat[0, i].item())
+
+    # Chatter limit: speed can change by at most max_dv (km/h) between consecutive steps.
+    if max_dv is not None:
+        model.t_dv = RangeSet(0, num_timesteps - 2)
+        model.dv_up = Constraint(
+            model.t_dv, model.i, rule=lambda m, t, i: m.v_pred[t + 1, i] - m.v_pred[t, i] <= max_dv
+        )
+        model.dv_down = Constraint(
+            model.t_dv, model.i, rule=lambda m, t, i: m.v_pred[t, i] - m.v_pred[t + 1, i] <= max_dv
+        )
 
     # Observed data
     model.v_hat = Param(
@@ -1076,6 +1077,7 @@ def run_calibration(
     x0=None,
     tee=True,
     min_oscillations=False,
+    max_dv=None,
 ):
     """
     Run METANET parameter calibration with configurable segment grouping.
@@ -1126,7 +1128,11 @@ def run_calibration(
     # Ensure no divide-by-zero
     # rho_hat = np.where(rho_hat == 0.0, 1e-3, rho_hat)
     # q_hat = np.where(q_hat == 0.0, 1e-3, q_hat)
-    v_hat = q_hat / rho_hat
+    with np.errstate(invalid="ignore", divide="ignore"):
+        v_hat = q_hat / rho_hat
+    
+    # Interpolate Nans
+    v_hat = pd.DataFrame(v_hat).interpolate(axis=0, limit_direction="both").to_numpy()
     # v_hat = np.where(v_hat == 0.0, 1e-3, v_hat)
 
     # Initialize results storage
@@ -1206,7 +1212,8 @@ def run_calibration(
             use_A_regularizer=use_A_regularizer,
             lambda_reg=lambda_reg, x0=x0,
             tee=tee,
-            min_oscillations=min_oscillations
+            min_oscillations=min_oscillations,
+            max_dv=max_dv,
         )
     else:
         assert isinstance(robust_opt, RobustOptConfig)

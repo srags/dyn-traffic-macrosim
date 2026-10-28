@@ -816,6 +816,370 @@ def run_and_plot_perturbations(param_configs, T, l, num_calibrated_segments,
 
     return all_results
 
+#### Curvature-over-time sensitivity ####
+CURVATURE_PARAM_KEYS = ['eta_high', 'K', 'tau', 'p_crit', 'v_free', 'a']
+
+
+def _expand_param_in_time(param, n_steps, num_segments):
+    """Return a (n_steps, num_segments) copy of a scalar, 1D (per segment) or 2D (time, segment) param."""
+    arr = np.asarray(param, dtype=float)
+    if arr.ndim == 0:
+        return np.full((n_steps, num_segments), float(arr))
+    if arr.ndim == 1:
+        return np.tile(arr.reshape(1, -1), (n_steps, 1))
+    return arr.copy()
+
+
+def _slice_params_in_time(params, t0, t1, n_steps):
+    """Keep rows t0:t1 of every (time, segment) param; scalar/1D params pass through unchanged."""
+    out = {}
+    for k, v in params.items():
+        arr = np.asarray(v, dtype=float)
+        if arr.ndim == 2 and arr.shape[0] == n_steps:
+            out[k] = arr[t0:t1]
+        else:
+            out[k] = arr
+    return out
+
+
+def compute_curvature_over_time(T, l, num_calibrated_segments,
+                                run_metanet_sim, mape_fn,
+                                rho_hat, q_hat, v_hat, params,
+                                lanes, base_rho_init, base_downstream, base_inflow,
+                                segment_idx=None, delta=0.02, window=30,
+                                param_keys=CURVATURE_PARAM_KEYS, atol=1e-8):
+    """
+    Curvature of the windowed velocity MAPE with respect to each parameter, at each time step.
+
+    For every time step t (stopping `window` steps before the end), the parameter is scaled by
+    (1 ± delta) at row t only, and MAPE is measured on states t+1 .. t+window:
+
+        curvature[t] = (MAPE(+delta) + MAPE(-delta) - 2 * MAPE(0)) / delta**2
+
+    Each run is warm-started from the baseline state at t and simulated for `window` steps
+    instead of the full horizon. A perturbation at t cannot change anything before t, so this
+    gives the same answer as a full run. To check that, the unperturbed warm-started run at
+    every t is asserted to match the full baseline run started at t=0.
+
+    segment_idx: None perturbs all segments at row t; an int perturbs only that segment.
+    """
+    v_true = v_hat[:, 1:-1]
+    n_steps = base_downstream.shape[0]
+    if n_steps <= window:
+        raise ValueError(f"window={window} must be smaller than the number of time steps ({n_steps}).")
+    cols = slice(None) if segment_idx is None else segment_idx
+
+    def run_sim(p, init_state, demand, downstream):
+        rho_sim, v_sim, _, _ = run_metanet_sim(
+            T=T, l=l,
+            init_traffic_state=init_state,
+            demand=demand,
+            downstream_density=downstream,
+            params=p,
+            vsl_speeds=None,
+            lanes=lanes,
+            plotting=True,
+            real_data=True,
+        )
+        return rho_sim, v_sim
+
+    # Full baseline run from t=0 (same setup as compute_perturbation_mapes)
+    init_full = (base_rho_init[0, :], v_hat[0, 1:-1], base_inflow[0], 0)
+    rho_base, v_base = run_sim(params, init_full, base_inflow, base_downstream)
+    print(f"  Baseline MAPE (full horizon): {mape_fn(v_true, v_base[:-1, :]):.4f}")
+
+    # Perturbed keys become (time, segment) arrays so a single row can be scaled
+    params_expanded = dict(params)
+    for key in param_keys:
+        params_expanded[key] = _expand_param_in_time(params[key], n_steps, num_calibrated_segments)
+
+    t_range = np.arange(n_steps - window)
+
+    def window_setup(t0):
+        t1 = t0 + window
+        init_state = (rho_base[t0].copy(), v_base[t0].copy(), base_inflow[0], 0)
+        local_params = _slice_params_in_time(params_expanded, t0, t1, n_steps)
+        return init_state, local_params, base_inflow[t0:t1], base_downstream[t0:t1]
+
+    def window_mape(v_local, t0):
+        # local state k is global state t0 + k; a change at row t0 first shows up in state t0 + 1
+        return mape_fn(v_true[t0 + 1:t0 + window + 1], v_local[1:window + 1])
+
+    # Unperturbed warm-started runs: must match the full baseline
+    print("  Checking warm-started baselines against the full run...")
+    mape_0 = np.empty(len(t_range))
+    for j, t0 in enumerate(t_range):
+        init_state, local_params, demand, downstream = window_setup(t0)
+        rho_loc, v_loc = run_sim(local_params, init_state, demand, downstream)
+        ref = slice(t0, t0 + window + 1)
+        err = max(np.max(np.abs(rho_loc - rho_base[ref])), np.max(np.abs(v_loc - v_base[ref])))
+        assert err <= atol, (
+            f"Warm-started baseline at t={t0} does not match the full baseline run "
+            f"(max abs diff {err:.3e} > atol {atol:.1e})."
+        )
+        mape_0[j] = window_mape(v_loc, t0)
+
+    curvature, mape_plus, mape_minus = {}, {}, {}
+    for key in param_keys:
+        print(f"  Perturbing {key} at each time step...")
+        m_plus = np.empty(len(t_range))
+        m_minus = np.empty(len(t_range))
+        for j, t0 in enumerate(t_range):
+            init_state, local_params, demand, downstream = window_setup(t0)
+            for sign, store in ((1, m_plus), (-1, m_minus)):
+                p = dict(local_params)
+                p[key] = local_params[key].copy()
+                p[key][0, cols] *= (1 + sign * delta)
+                _, v_loc = run_sim(p, init_state, demand, downstream)
+                store[j] = window_mape(v_loc, t0)
+        mape_plus[key] = m_plus
+        mape_minus[key] = m_minus
+        curvature[key] = (m_plus + m_minus - 2 * mape_0) / delta ** 2
+
+    return {
+        "t": t_range,
+        "mape_0": mape_0,
+        "curvature": curvature,
+        "mape_plus": mape_plus,
+        "mape_minus": mape_minus,
+    }
+
+
+def _curvature_segment(cfg):
+    """None (all segments at once) or an int segment index."""
+    seg = cfg.get("segment_idx", "all")
+    return None if seg in (None, "all") else int(seg)
+
+
+def _make_curvature_cache_name(cfg, delta, window):
+    seg = _curvature_segment(cfg)
+    seg_str = "all" if seg is None else str(seg)
+    label = cfg["label"].replace(" ", "_").replace("/", "_")
+    return f"{label}_curv_seg{seg_str}_d{delta:.4f}_w{window}.npz"
+
+
+def _save_curvature_results(filepath, res, cfg, delta, window):
+    filepath = Path(filepath)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    keys = list(res["curvature"].keys())
+    save_dict = {
+        "t": res["t"],
+        "mape_0": res["mape_0"],
+        "keys": np.array(keys, dtype=object),
+        "label": np.array(cfg["label"], dtype=object),
+        "delta": np.array(delta),
+        "window": np.array(window),
+    }
+    for k in keys:
+        save_dict[f"curv__{k}"] = res["curvature"][k]
+        save_dict[f"plus__{k}"] = res["mape_plus"][k]
+        save_dict[f"minus__{k}"] = res["mape_minus"][k]
+    np.savez_compressed(filepath, **save_dict)
+    print(f"  Saved curvature data to: {filepath}")
+
+
+def _load_curvature_results(filepath):
+    data = np.load(Path(filepath), allow_pickle=True)
+    keys = [str(k) for k in data["keys"]]
+    return {
+        "t": data["t"],
+        "mape_0": data["mape_0"],
+        "curvature": {k: data[f"curv__{k}"] for k in keys},
+        "mape_plus": {k: data[f"plus__{k}"] for k in keys},
+        "mape_minus": {k: data[f"minus__{k}"] for k in keys},
+    }
+
+
+def run_and_plot_curvature_over_time(param_configs, T, l, num_calibrated_segments,
+                                     run_metanet_sim, mape_fn,
+                                     delta=0.02, window=30,
+                                     save_path=None,
+                                     cache_dir="curvature_cache",
+                                     use_cache=True,
+                                     load_only=False,
+                                     g_fontsize=20,
+                                     yscale="linear",
+                                     linthresh=100,
+                                     block_lines="auto",
+                                     min_block_spacing=30):
+    """
+    Same configs as run_and_plot_perturbations. Plots curvature vs time step for each of the
+    six parameters (one stacked panel each), with one line per config.
+
+    yscale: "linear" or "symlog". symlog is linear within ±linthresh and logarithmic beyond,
+    so the large early-transient values don't flatten the rest of the plot while negative
+    curvature stays visible.
+
+    cfg["segment_idx"]: an int perturbs only that segment; "all" or None (default) perturbs
+    every segment at the chosen time step. cfg["bc_timestep"] is ignored here.
+    Dashed vertical lines mark each config's control-block boundaries (multiples of
+    cfg["control_hor"]), where its calibrated parameters are allowed to change.
+
+    block_lines: which configs get boundary lines.
+        "auto"  - only configs whose control_hor is at least min_block_spacing steps
+                  (short horizons such as MPC_6 would draw a line every few steps)
+        list    - only the configs with these labels, e.g. ["MPC_90"]
+        None    - no boundary lines
+    """
+    tick_fs = g_fontsize
+    label_fs = g_fontsize + 1
+    legend_fs = g_fontsize + 1
+    title_fs = g_fontsize + 4
+
+    # ── Load shared ground truth data (same as run_and_plot_perturbations) ─────
+    rho_hat = np.load(os.path.join(paths.i24_data("11_30"), "rho_hat.npy"))
+    q_hat = np.load(os.path.join(paths.i24_data("11_30"), "q_hat.npy"))
+    v_hat = q_hat / rho_hat
+
+    lane_mapping = np.load(os.path.join(paths.i24_data("11_30"), "lane_mapping.npy"))
+    rho_hat = rho_hat / lane_mapping
+
+    # ── Run or load curvature for each config ─────────────────────────────────
+    true_labels = {"OCP": "Static", "MPC_90": "Dynamic \n (Ours)", "RL": "RL"}
+    all_results = {}
+    cache_dir = Path(cache_dir)
+
+    for cfg in param_configs:
+        label = cfg["label"]
+        seg = _curvature_segment(cfg)
+
+        print(f"\n{'='*50}")
+        print(f"Config: {label} ({cfg['results_dir']})")
+        print(f"Segment: {'all' if seg is None else seg} | delta={delta} | window={window}")
+        print(f"{'='*50}")
+
+        cache_file = cache_dir / _make_curvature_cache_name(cfg, delta, window)
+        print(f"Cache:  {cache_file}")
+
+        if cache_file.exists() and (use_cache or load_only):
+            print("  Loading existing curvature data...")
+            all_results[label] = _load_curvature_results(cache_file)
+            continue
+
+        if load_only:
+            raise FileNotFoundError(
+                f"load_only=True, but cache file does not exist:\n{cache_file}"
+            )
+
+        print("  No cache found, running curvature sweep...")
+
+        params = METANET_Params(
+            path=cfg["results_dir"],
+            control_h=cfg["control_hor"],
+            num_segments=num_calibrated_segments,
+            num_timesteps=rho_hat.shape[0]
+        ).get_params()
+
+        lanes = {i: cfg["lanes"][i] for i in range(num_calibrated_segments)}
+
+        if cfg.get("smooth_rho", False):
+            base_rho_init = opt.smooth_inflow(rho_hat[:, 1:-1])
+        else:
+            base_rho_init = rho_hat[:, 1:-1].copy()
+
+        if cfg.get("smooth_bc", False):
+            base_downstream = opt.smooth_inflow(rho_hat[:, -1])
+            base_inflow = opt.smooth_inflow(q_hat[:, 0])
+        else:
+            base_downstream = rho_hat[:, -1].copy()
+            base_inflow = q_hat[:, 0].copy()
+
+        res = compute_curvature_over_time(
+            T=T, l=l,
+            num_calibrated_segments=num_calibrated_segments,
+            run_metanet_sim=run_metanet_sim,
+            mape_fn=mape_fn,
+            rho_hat=rho_hat, q_hat=q_hat, v_hat=v_hat,
+            params=params,
+            lanes=lanes,
+            base_rho_init=base_rho_init,
+            base_downstream=base_downstream,
+            base_inflow=base_inflow,
+            segment_idx=seg,
+            delta=delta,
+            window=window,
+        )
+
+        all_results[label] = res
+        _save_curvature_results(cache_file, res, cfg, delta, window)
+
+    # ── Plotting ──────────────────────────────────────────────────────────────
+    mpl.rcParams.update({
+        "font.family": "serif",
+        "font.serif": "Times New Roman",
+        "mathtext.fontset": "cm",
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+        "axes.unicode_minus": False,
+        "text.usetex": False
+    })
+
+    title_map = {
+        'eta_high': r'$\eta$',
+        'K': r'$\kappa$',
+        'tau': r'$\tau$',
+        'p_crit': r'$\rho_{\mathrm{cr}}$',
+        'v_free': r'$v_{\mathrm{free}}$',
+        'a': r'$a$',
+    }
+    colors = ["orange", "#BB4EFF", "blue"]
+    all_keys = CURVATURE_PARAM_KEYS
+
+    fig, axes = plt.subplots(len(all_keys), 1, figsize=(12, 2.6 * len(all_keys)), sharex=True)
+    axes = np.atleast_1d(axes)
+
+    for ax, key in zip(axes, all_keys):
+        ax.set_facecolor('white')
+        for idx, (cfg, (label, res)) in enumerate(zip(param_configs, all_results.items())):
+            color = colors[idx % len(colors)]
+            ax.plot(res["t"], res["curvature"][key], color=color, linewidth=1.8)
+
+            control_hor = cfg.get("control_hor")
+            if block_lines is None or block_lines is False:
+                draw_lines = False
+            elif block_lines == "auto":
+                draw_lines = bool(control_hor) and control_hor >= min_block_spacing
+            else:
+                draw_lines = bool(control_hor) and label in block_lines
+            if draw_lines:
+                for b in range(control_hor, int(res["t"][-1]) + 1, control_hor):
+                    ax.axvline(b, color=color, linewidth=1.0, linestyle='--', alpha=0.6)
+
+        ax.axhline(0, color='black', linewidth=0.8, linestyle=':', alpha=0.7)
+        if yscale == "symlog":
+            ax.set_yscale("symlog", linthresh=linthresh)
+        elif yscale != "linear":
+            raise ValueError(f"yscale must be 'linear' or 'symlog', got {yscale!r}")
+        ax.grid(True, color='lightgrey', linewidth=0.5, linestyle='-', alpha=0.8)
+        ax.set_axisbelow(True)
+        ax.set_ylabel(title_map.get(key, key), fontsize=title_fs, rotation=0, labelpad=30, va='center')
+        ax.tick_params(labelsize=tick_fs)
+        for spine in ax.spines.values():
+            spine.set_edgecolor('#cccccc')
+            spine.set_linewidth(0.8)
+
+    axes[-1].set_xlabel('Time step', fontsize=label_fs)
+    axes[-1].set_xlim(0, max(int(res["t"][-1]) for res in all_results.values()))
+    fig.supylabel('Curvature of windowed MAPE', fontsize=label_fs, x=-0.02)
+
+    legend_handles = [
+        Line2D([0], [0], color=colors[idx % len(colors)], linewidth=1.8,
+               label=true_labels.get(label, label))
+        for idx, label in enumerate(all_results)
+    ]
+    fig.legend(handles=legend_handles, loc='upper center', bbox_to_anchor=(0.5, 1.02),
+               ncol=len(legend_handles), frameon=True, fontsize=legend_fs)
+
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='white')
+        print(f"\nSaved plot to {save_path}")
+    plt.show()
+
+    return all_results
+
+
 def plot_fd_diagrams(params_list, scenario_info, labels, save_path=None, show_gt=True, show_legend=True):
     q_sims = dict()
     rho_sims = dict()
@@ -1074,7 +1438,8 @@ def plot_time_space_grid(
     start_time_str="08:00",
     colorbar_label="Speed",
     save_path="noised_inflows.pdf",
-    show_gt=False
+    show_gt=False,
+    x_tick_interval=60
     
 ):
     def _time_fmt(x, pos=None):
@@ -1186,10 +1551,10 @@ def plot_time_space_grid(
 
             if r == nrows - 1:
                 ax.set_xlabel("Time", fontsize=label_fs)
-                ax.xaxis.set_major_locator(mdates.MinuteLocator(interval=15))
+                ax.xaxis.set_major_locator(mdates.MinuteLocator(interval=x_tick_interval))
                 ax.xaxis.set_major_formatter(FuncFormatter(_time_fmt))
                 for tick in ax.get_xticklabels():
-                    tick.set_rotation(-20)
+                    tick.set_rotation(50)
                     tick.set_ha("left")
             else:
                 ax.tick_params(axis="x", labelbottom=False)
@@ -1279,7 +1644,7 @@ def plot_time_space_grid(
         ax_vhat.set_title(vhat_title, fontsize=title_fs)
         ax_vhat.tick_params(labelsize=tick_fs)
         ax_vhat.tick_params(axis="y", labelleft=False)
-        ax_vhat.xaxis.set_major_locator(mdates.MinuteLocator(interval=15))
+        ax_vhat.xaxis.set_major_locator(mdates.MinuteLocator(interval=x_tick_interval))
         ax_vhat.xaxis.set_major_formatter(FuncFormatter(_time_fmt))
         ax_vhat.set_xlabel("Time", fontsize=label_fs)
         ax_vhat.set_yticks(yticks)

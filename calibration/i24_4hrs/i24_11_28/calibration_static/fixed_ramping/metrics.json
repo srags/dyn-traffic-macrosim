@@ -1,0 +1,41 @@
+{
+  "data_path": "data/i24_4hrs/i24_11_28",
+  "out_dir": "calibration/i24_4hrs/i24_11_28/calibration_static/fixed_ramping",
+  "status": "done",
+  "calibration_seconds": 180.5066318511963,
+  "solver_status": "ok",
+  "termination_condition": "optimal",
+  "objective": 7245.044152409389,
+  "metrics": {
+    "calibration": {
+      "rho_mape": 28.844564623634433,
+      "q_mape": 145.69205491548755,
+      "v_mape": 58.01890604573057,
+      "rho_rmse": 24.973644044737817,
+      "q_rmse": 1134.6224935184007,
+      "v_rmse": 18.384408570479287
+    },
+    "simulation": {
+      "rho_mape": 28.84638770748509,
+      "v_mape": 58.02923161667729,
+      "rho_rmse": 24.98150782696435,
+      "v_rmse": 18.386668456258228
+    },
+    "mismatch": {
+      "rho_mape": 0.04075458780063653,
+      "v_mape": 0.35013672078726155,
+      "rho_rmse": 0.19250414282294578,
+      "v_rmse": 0.10254419634364907
+    }
+  },
+  "settings": {
+    "T": 0.002777777777777778,
+    "l": 0.4,
+    "include_ramping": true,
+    "varylanes": false,
+    "smoothing": true,
+    "constraint_tol": 1e-12,
+    "time_varying_ramps": false,
+    "seed": 1
+  }
+}

@@ -28,11 +28,11 @@ CALIB_PARAM_NAMES = ["eta_high", "tau", "K", "rho_crit", "v_free", "a"]   # <<<
  #['eta_high', 'v_free'] 
 
 CALIB_PARAM_BOUNDS = {                                                       # <<<
-    "eta_high": (10.0,        60.0),                                         # <<<
+    "eta_high": (10.0,        90.0),                                         # <<<
     "tau":      (10.0/3600,   60.0/3600),                                    # <<<
-    "K":        (20.0,        60.0),                                         # <<<
-    "rho_crit": (20.0,        50.0),                                         # <<<
-    "v_free":   (70.0,        135.0),                                        # <<<
+    "K":        (5.0,        60.0),                                         # <<<
+    "rho_crit": (10.0,        75.0),                                         # <<<
+    "v_free":   (70.0,        140.0),                                        # <<<
     "a":        (0.5,         5.0),                                          # <<<
 }     
 
@@ -267,6 +267,7 @@ def metanet_param_fit(
     min_oscillations=False,
     oscillation_weight=5,
     max_dv=None,
+    jam_speed=None,
 ):
     initial_flow_or = initial_traffic_state
     
@@ -350,7 +351,7 @@ def metanet_param_fit(
 
     if include_ramping:    
         if time_varying_ramps:
-            model.beta = Var(model.i, bounds=(1e-3, 0.8), initialize=1e-3)
+            model.beta = Var(model.i, bounds=(1e-3, 0.6), initialize=1e-3)
             model.r_inflow = Var(model.t, model.i, bounds=(1e-3, 2000), initialize=1e-3)
             
             if ramp_mapping is not None:
@@ -378,7 +379,7 @@ def metanet_param_fit(
                         model.beta[i].value = params["beta"][i]
                         model.r_inflow[t, i].value = params["r"][t, i]
         else:
-            model.beta = Var(model.i, bounds=(1e-3, 0.9), initialize=1e-3)
+            model.beta = Var(model.i, bounds=(1e-3, 0.6), initialize=1e-3)
             model.r_inflow = Var(model.i, bounds=(1e-3, 2000), initialize=1e-3)
             
             if ramp_mapping is not None:
@@ -438,6 +439,17 @@ def metanet_param_fit(
         )
         model.dv_down = Constraint(
             model.t_dv, model.i, rule=lambda m, t, i: m.v_pred[t, i] - m.v_pred[t + 1, i] <= max_dv
+        )
+
+    # Jam-speed floor: jam_speed = (rho_jam, v_min) means the desired speed V(rho) at
+    # rho_jam veh/km/lane must be at least v_min km/h, so the fundamental diagram cannot
+    # drop to ~0 just above the observed densities (which traps the simulation in gridlock).
+    # V(rho_jam) >= v_min  <=>  (rho_jam / rho_crit)^a / a <= ln(v_free / v_min)
+    if jam_speed is not None:
+        rho_jam, v_min = jam_speed
+        model.jam_speed_con = Constraint(
+            model.i,
+            rule=lambda m, i: (rho_jam / m.rho_crit[i]) ** m.a[i] / m.a[i] <= pyo.log(m.v_free[i] / v_min),
         )
 
     # Observed data
@@ -632,7 +644,7 @@ def metanet_param_fit(
         rho_max = max(m.rho_hat[t, i] for t in m.t for i in m.i)
         #q_max = max(m.q_hat[t, i] for t in m.t for i in m.i)
         loss_fn = sum(
-            (20 * ((m.v_pred[t, i] - m.v_hat[t, i]) / v_max) ** 2)
+            (5 * ((m.v_pred[t, i] - m.v_hat[t, i]) / v_max) ** 2)
             + ((m.rho_pred[t, i] - m.rho_hat[t, i]) / rho_max) ** 2
             #+ ((m.q_pred[t, i] - m.q_hat[t, i]) / q_max) ** 2
             for t in m.t
@@ -1078,6 +1090,7 @@ def run_calibration(
     tee=True,
     min_oscillations=False,
     max_dv=None,
+    jam_speed=None,
 ):
     """
     Run METANET parameter calibration with configurable segment grouping.
@@ -1214,6 +1227,7 @@ def run_calibration(
             tee=tee,
             min_oscillations=min_oscillations,
             max_dv=max_dv,
+            jam_speed=jam_speed,
         )
     else:
         assert isinstance(robust_opt, RobustOptConfig)

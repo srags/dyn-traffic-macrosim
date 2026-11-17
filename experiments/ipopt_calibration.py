@@ -54,7 +54,9 @@ SMOOTHING = True
 CONSTRAINT_TOL = 1e-12
 TIME_VARYING_RAMPS = False
 SEED = 1
-MAX_DV = 35.0  # km/h: largest allowed speed change between consecutive steps (None = off)
+# (rho_jam veh/km/lane, v_min km/h): desired speed at rho_jam must be >= v_min (None = off)
+JAM_SPEED = (80.0, 5.0)
+MAX_DV = None #35.0  # km/h: largest allowed speed change between consecutive steps (None = off)
 
 # A finished run is detected by this file existing in the output folder.
 DONE_MARKER = "metrics.json"
@@ -125,6 +127,7 @@ def calibrate_day(data):
         time_varying_ramps=TIME_VARYING_RAMPS,
         fixed_inflows=None,
         max_dv=MAX_DV,
+        jam_speed=JAM_SPEED,
     )
 
 
@@ -195,10 +198,10 @@ def simulate_and_score(results, data, out_dir):
         # Model mismatch: IPOPT prediction vs forward simulation with the same parameters.
         # MAPE divides by the data (not the sim), since sim speeds can be ~0.
         "mismatch": {
-            "rho_mape": float(100 * np.mean(np.abs(rho_pred - rho_sim_total) / np.abs(rho_hat[:, 1:-1]))),
-            "v_mape": float(100 * np.mean(np.abs(v_pred - v_sim[0:-1, :]) / np.abs(v_hat[:, 1:-1]))),
-            "rho_rmse": float(rmse(rho_sim_total, rho_pred)),
-            "v_rmse": float(rmse(v_sim[0:-1, :], v_pred)),
+            "rho_mape": float(mape(rho_pred, rho_sim_total)),
+            "v_mape":  float(mape(v_pred, v_sim[0:-1, :])),
+            "rho_rmse": float(rmse(rho_pred, rho_sim_total)),
+            "v_rmse": float(rmse(v_pred, v_sim[0:-1, :])),
         },
     }
 
@@ -243,6 +246,7 @@ def run_one(data_path, run_name, overwrite):
             "time_varying_ramps": TIME_VARYING_RAMPS,
             "seed": SEED,
             "max_dv": MAX_DV,
+            "jam_speed": JAM_SPEED,
         },
     }
     # Written last, so its presence means the run finished.

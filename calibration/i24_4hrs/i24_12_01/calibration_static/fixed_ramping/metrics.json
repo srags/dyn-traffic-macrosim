@@ -1,31 +1,31 @@
 {
   "data_path": "data/i24_4hrs/i24_12_01",
-  "out_dir": "calibration/i24_4hrs/i24_12_01/calibration_static/fixed_ramping",
+  "out_dir": "calibration/i24_4hrs/i24_12_01/calibration_static/rerun_jam_speed",
   "status": "done",
-  "calibration_seconds": 184.69561004638672,
+  "calibration_seconds": 394.29978704452515,
   "solver_status": "ok",
   "termination_condition": "optimal",
-  "objective": 5933.855574896197,
+  "objective": 2429.1905628084223,
   "metrics": {
     "calibration": {
-      "rho_mape": 30.17615442280739,
-      "q_mape": 35.462410198641656,
-      "v_mape": 36.344641675925054,
-      "rho_rmse": 26.870729371245965,
-      "q_rmse": 1178.5607183761274,
-      "v_rmse": 16.230591316588047
+      "rho_mape": 45.182687472279795,
+      "q_mape": 54.300684041714945,
+      "v_mape": 45.94309169423577,
+      "rho_rmse": 36.23711359496452,
+      "q_rmse": 1772.925492909603,
+      "v_rmse": 19.275688124342505
     },
     "simulation": {
-      "rho_mape": 30.184269236548104,
-      "v_mape": 36.34249857570842,
-      "rho_rmse": 26.8760674197782,
-      "v_rmse": 16.23072961384874
+      "rho_mape": 45.182570232018904,
+      "v_mape": 45.94310991247619,
+      "rho_rmse": 36.23671390580673,
+      "v_rmse": 19.275933690889985
     },
     "mismatch": {
-      "rho_mape": 0.01178625489161653,
-      "v_mape": 0.010804651458570482,
-      "rho_rmse": 0.1682008787280593,
-      "v_rmse": 0.09447500126371837
+      "rho_mape": 0.00878363299864137,
+      "v_mape": 0.010041217442020668,
+      "rho_rmse": 0.05484887347219273,
+      "v_rmse": 0.06803163731752104
     }
   },
   "settings": {
@@ -36,6 +36,11 @@
     "smoothing": true,
     "constraint_tol": 1e-12,
     "time_varying_ramps": false,
-    "seed": 1
+    "seed": 1,
+    "max_dv": null,
+    "jam_speed": [
+      80.0,
+      5.0
+    ]
   }
 }

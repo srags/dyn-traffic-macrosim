@@ -1554,7 +1554,7 @@ def plot_time_space_grid(
                 ax.xaxis.set_major_locator(mdates.MinuteLocator(interval=x_tick_interval))
                 ax.xaxis.set_major_formatter(FuncFormatter(_time_fmt))
                 for tick in ax.get_xticklabels():
-                    tick.set_rotation(50)
+                    tick.set_rotation(-50)
                     tick.set_ha("left")
             else:
                 ax.tick_params(axis="x", labelbottom=False)
